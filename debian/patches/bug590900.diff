@@ -1,0 +1,11 @@
+--- minicom-2.4.orig/src/vt100.c
++++ minicom-2.4/src/vt100.c
+@@ -219,7 +219,7 @@
+   mc_wresetregion(vt_win);
+   vt_keypad = NORMAL;
+   vt_cursor = NORMAL;
+-  vt_echo = 0;
++  vt_echo = local_echo;
+   vt_tabs[0] = 0x01010100;
+   vt_tabs[1] =
+   vt_tabs[2] =
