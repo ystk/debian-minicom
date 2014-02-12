@@ -34,6 +34,11 @@
 #include "libport.h"
 
 #include <time.h>
+#include <stdbool.h>
+
+#if HAVE_LOCKDEV
+#include <ttylock.h>
+#endif
 
 #ifdef USE_SOCKET
 #include <sys/socket.h>
@@ -216,15 +221,16 @@ void leave(const char *s) __attribute__((noreturn));
 char *esc_key(void);
 void term_socket_connect(void);
 void term_socket_close(void);
-int  open_term(int doinit, int show_win_on_error);
+int  open_term(int doinit, int show_win_on_error, int no_msgs);
 void init_emul(int type, int do_init);
 void timer_update(void);
 void mode_status(void);
-void time_status(void);
+void time_status(bool);
 void curs_status(void);
 void show_status(void);
 void scriptname(const char *s);
 int  do_terminal(void);
+void status_set_display(const char *text, int duration_s);
 
 /* Prototypes from file: minicom.c */
 void port_init(void);
@@ -293,7 +299,7 @@ extern int io_pending, pendingkeys;
 void domacros(void);
 
 
-void lockfile_create(void);
+int lockfile_create(void);
 void lockfile_remove(void);
 
 
@@ -311,3 +317,10 @@ void lockfile_remove(void);
 #define FL_TAG		0x80	/* This entry is tagged. */
 #define FL_SAVE		0x0f	/* Which portions of flags to save. */
 
+enum {
+  TIMESTAMP_LINE_OFF,
+  TIMESTAMP_LINE_SIMPLE,
+  TIMESTAMP_LINE_EXTENDED,
+  TIMESTAMP_LINE_PER_SECOND,
+  TIMESTAMP_LINE_NR_OF_OPTIONS, // must be last
+};

@@ -24,14 +24,12 @@ MINICOM_LIBPORT = $(top_builddir)/lib/libport.a
 
 LDADD = $(MINICOM_LIBPORT)
 
-AM_CFLAGS = @CFLAGS@ -Wall -W
-
 confdir = @MINICOM_CONFDIR@
 
 AM_CPPFLAGS = @CPPFLAGS@ -I$(top_srcdir)/lib -DCONFDIR=\"$(confdir)\" \
               -DLOCALEDIR=\"$(datadir)/locale\"
 
-minicom_LDADD = @LIBINTL@ $(MINICOM_LIBPORT)
+minicom_LDADD = @LIBINTL@ $(LIBICONV) $(MINICOM_LIBPORT) $(LOCKDEV_LIBS)
 minicom_keyserv_LDADD = @LIBINTL@ $(MINICOM_LIBPORT)
 runscript_LDADD = @LIBINTL@ $(MINICOM_LIBPORT)
 

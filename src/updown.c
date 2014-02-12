@@ -29,6 +29,8 @@
 #include <config.h>
 #endif
 
+#include <wchar.h>
+
 #include "port.h"
 #include "minicom.h"
 #include "intl.h"
@@ -67,6 +69,7 @@ static int mcd(char *dir)
     /* This may look safe but you might I8N change the string! so
        snprintf it */
     snprintf(err, sizeof(err),  _("Cannot chdir to %.30s"), dir);
+    err[sizeof(err) - 1] = 0;
     werror("%s", err);
     return -1;
   }
@@ -89,40 +92,83 @@ static void udcatch(int dummy)
  * Translate %b to the current bps rate, and
  *           %l to the current tty port.
  *           %f to the serial port file descriptor
+ *
+ * Caller must free the returned string
  */
 static char *translate(char *s)
 {
-  static char buf[128];
-  char str_portfd[8];     /* kino */
-  int i;
+  char * ptr;
+  char * translation;
+  size_t translation_length;
+  char   str_portfd[8];     /* kino */
 
-  for (i = 0; *s && i < 127; i++, s++) {
+  /* determine how many bytes we'll need for the translated version */
+  translation_length = 0;
+  for (ptr = s; *ptr != '\0'; ptr++) {
+    if (*ptr != '%') {
+      translation_length++;
+    }
+    else {
+      switch(*++ptr) {
+
+        case 'l': /* tty port */
+          translation_length += strlen(dial_tty);
+          break;
+
+        case 'b': /* baud rate (bbp) */
+          translation_length += strlen(P_BAUDRATE);
+          break;
+
+        case 'f': /* serial port file descriptor */
+          sprintf(str_portfd, "%d", portfd);
+          translation_length += strlen(str_portfd);
+          break;
+
+        default: /* treat all other escape sequences literally */
+          translation_length += 2;
+          break;
+      }
+    }
+  }
+
+  translation = malloc(translation_length + 1);
+  if (translation == NULL) {
+    do_log("out of memory");
+    return NULL;
+  }
+
+  /* now copy and translate s into the allocated buffer */
+  for (ptr = translation; *s != '\0'; s++) {
     if (*s != '%') {
-      buf[i] = *s;
+      *ptr++ = *s;
       continue;
     }
-    switch (*++s) {
-      case 'l':
-        strncpy(buf + i, dial_tty, sizeof(buf)-i);
-        i += strlen(dial_tty) - 1;
+    switch(*++s) {
+      case 'l': /* tty port */
+        strcpy(ptr, dial_tty);
+        ptr += strlen(dial_tty);
         break;
-      case 'b':
-        strncpy(buf + i, P_BAUDRATE, sizeof(buf)-i);
-        i += strlen(P_BAUDRATE) - 1;
+
+      case 'b': /* baud rate (bbp) */
+        strcpy(ptr, P_BAUDRATE);
+        ptr += strlen(P_BAUDRATE);
         break;
-      case 'f':
+
+      case 'f': /* serial port file descriptor */
         sprintf(str_portfd, "%d", portfd);
-        strncpy(buf + i, str_portfd, sizeof(buf)-i);
-        i += strlen(str_portfd) - 1;
+        strcpy(ptr, str_portfd);
+        ptr += strlen(str_portfd);
         break;
-      default:
-        buf[i++] = '%';
-        buf[i] = *s;
+
+      default: /* treat all other escape sequences literally */
+        *ptr++ = '%';
+        *ptr++ = *s;
         break;
     }
   }
-  buf[i] = 0;
-  return buf;
+  *ptr = '\0';
+
+  return translation;
 }
 
 /*
@@ -183,7 +229,8 @@ void updown(int what, int nr)
   const char *s  ="";
   int pipefd[2];
   int n, status;
-  char cmdline[128];
+  char * cmdline = NULL;
+  char * translated_cmdline = NULL;
   WIN *win = (WIN *)NULL;
 
   if (mcd(what == 'U' ? P_UPDIR : P_DOWNDIR) < 0)
@@ -215,6 +262,7 @@ void updown(int what, int nr)
 #if 1
   {
     int multiple; /* 0:only directory, 1:one file, -1:any number */
+    size_t cmdline_length;
 
     if (P_MUL(g)=='Y')
       /* need file(s), or just a directory? */
@@ -234,7 +282,13 @@ void updown(int what, int nr)
     }
 
     /* discard directory if "multiple" == 0 */
-    snprintf(cmdline, sizeof(cmdline), "%s %s", P_PPROG(g), multiple == 0? "" : s);
+    cmdline_length = strlen(P_PPROG(g)) + strlen((char*) (multiple == 0 ? "" : s)) + 1; /* + 1 for ' ' */
+    cmdline = malloc(cmdline_length + 1); /* + 1 for NUL */
+    if (cmdline == NULL) {
+      werror(_("Out of memory: could allocate buffer for command line"));
+      return;
+    }
+    snprintf(cmdline, cmdline_length + 1, "%s %s", P_PPROG(g), multiple == 0 ? "" : s);
   }
 #endif
 
@@ -250,6 +304,8 @@ void updown(int what, int nr)
   } else
     mc_wleave();
 
+  m_flush(portfd);
+
   switch (udpid = fork()) {
     case -1:
       werror(_("Out of memory: could not fork()"));
@@ -260,6 +316,8 @@ void updown(int what, int nr)
       } else
         mc_wreturn();
       mcd("");
+      if(cmdline)
+        free(cmdline);
       return;
     case 0: /* Child */
       if (P_PIORED(g) == 'Y') {
@@ -278,11 +336,21 @@ void updown(int what, int nr)
       for (n = 1; n < _NSIG; n++)
         signal(n, SIG_DFL);
 
-      fastexec(translate(cmdline));
+      translated_cmdline = translate(cmdline);
+      if (translated_cmdline != NULL) {
+        fastexec(translated_cmdline);
+        free(translated_cmdline);
+      }
+      if(cmdline)
+        free(cmdline);
       exit(1);
     default: /* Parent */
       break;
   }
+ 
+  if(cmdline)
+    free(cmdline);
+
   if (win) {
     setcbreak(1);         /* Cbreak, no echo. */
     enab_sig(1, 0);       /* But enable SIGINT */
@@ -377,28 +445,52 @@ void updown(int what, int nr)
 
 void lockfile_remove(void)
 {
-  if (lockfile[0])
-    unlink(lockfile);
-}
-
-void lockfile_create(void)
-{
-  int fd, n;
-  char buf[81];
-
-  if (!lockfile[0])
+  if (portfd_is_socket)
     return;
 
+#if !HAVE_LOCKDEV
+  if (lockfile[0])
+    unlink(lockfile);
+#else
+  ttyunlock(dial_tty);
+#endif
+}
+
+int lockfile_create(void)
+{
+  int n;
+
+  if (portfd_is_socket)
+    return 0;
+
+#if !HAVE_LOCKDEV
+  if (!lockfile[0])
+    return 0;
+
+  int fd;
   n = umask(022);
   /* Create lockfile compatible with UUCP-1.2 */
   if ((fd = open(lockfile, O_WRONLY | O_CREAT | O_EXCL, 0666)) < 0) {
     werror(_("Cannot create lockfile!"));
   } else {
-    snprintf(buf, sizeof(buf),  "%05d minicom %.20s\n", (int)getpid(), username);
+    // FHS format:
+    char buf[12];
+    snprintf(buf, sizeof(buf),  "%10d\n", getpid());
+    buf[sizeof(buf) - 1] = 0;
     write(fd, buf, strlen(buf));
     close(fd);
   }
   umask(n);
+  return 0;
+#else
+  n = ttylock(dial_tty);
+  if (n < 0) {
+    fprintf(stderr, _("Cannot create lockfile for %s: %s\n"), dial_tty, strerror(-n));
+  } else if (n > 0) {
+    fprintf(stderr, _("Device %s is locked.\n"), dial_tty);
+  }
+  return n;
+#endif
 }
 
 /*
@@ -409,7 +501,8 @@ void lockfile_create(void)
 void kermit(void)
 {
   int status, pid, n;
-  char *kermit_path = translate(P_KERMIT);
+  char * translated_cmdline;
+  char *kermit_path = P_KERMIT;
 
   if (!kermit_path || !*kermit_path) {
     werror("No kermit path defined!");
@@ -433,7 +526,11 @@ void kermit(void)
       for (n = 0; n < _NSIG; n++)
         signal(n, SIG_DFL);
 
-      fastexec(kermit_path);
+      translated_cmdline = translate(P_KERMIT);
+      if (translated_cmdline != NULL) {
+        fastexec(translated_cmdline);
+        free(translated_cmdline);
+      }
       exit(1);
     default: /* Parent */
       break;
@@ -531,6 +628,7 @@ void runscript(int ask, const char *s, const char *l, const char *p)
   char scr_lines[5];
   char cmdline[128];
   struct pollfd fds[2];
+  char *translated_cmdline;
   char *ptr;
   WIN *w;
   int done = 0;
@@ -633,7 +731,12 @@ void runscript(int ask, const char *s, const char *l, const char *p)
       mc_setenv("LOGIN", scr_user);
       mc_setenv("PASS", scr_passwd);
       mc_setenv("TERMLIN", scr_lines);	/* jl 13.09.97 */
-      fastexec(translate(cmdline));
+      translated_cmdline = translate(cmdline);
+
+      if (translated_cmdline != NULL) {
+        fastexec(translated_cmdline);
+        free(translated_cmdline);
+      }
       exit(1);
     default: /* Parent */
       break;
@@ -650,9 +753,11 @@ void runscript(int ask, const char *s, const char *l, const char *p)
   fds[1].events = POLLIN;
   script_running = 1;
   while (script_running && poll(fds, 2, -1) > 0)
-    for (i = 0; i < 2; i++)
-      if ((fds[i].revents & POLLIN)
-          && (n = read(fds[i].fd, buf, sizeof(buf)-1)) > 0) {
+    for (i = 0; i < 2; i++) {
+      if (fds[i].revents & (POLLERR | POLLHUP | POLLNVAL))
+        script_running = 0;
+      else if ((fds[i].revents & POLLIN)
+               && (n = read(fds[i].fd, buf, sizeof(buf)-1)) > 0) {
         ptr = buf;
         while (n--)
           if (i)
@@ -662,6 +767,7 @@ void runscript(int ask, const char *s, const char *l, const char *p)
         timer_update();
         mc_wflush();
       }
+    }
 
   /* Collect status, and clean up. */
   m_wait(&status);

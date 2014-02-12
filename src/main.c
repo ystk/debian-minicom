@@ -31,6 +31,8 @@
 #include <errno.h>
 #endif
 
+#include <stdbool.h>
+
 #ifdef SVR4_LOCKS
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -42,15 +44,13 @@ static jmp_buf albuf;
 /* Compile SCCS ID into executable. */
 const char *Version = VERSION;
 
-void curs_status(void);
-
 /*
  * Find out name to use for lockfile when locking tty.
  */
-char *mbasename(char *s, char *res, int reslen)
+static char *mbasename(char *s, char *res, int reslen)
 {
   char *p;
-  
+
   if (strncmp(s, "/dev/", 5) == 0) {
     /* In /dev */
     strncpy(res, s + 5, reslen - 1);
@@ -108,10 +108,10 @@ char *esc_key(void)
   return buf;
 }
 
-/*ARGSUSED*/
 static void get_alrm(int dummy)
 {
   (void)dummy;
+  errno = ETIMEDOUT;
   longjmp(albuf, 1);
 }
 
@@ -151,16 +151,31 @@ void term_socket_close(void)
  *
  * \return -1 on error, 0 on success
  */
-int open_term(int doinit, int show_win_on_error)
+int open_term(int doinit, int show_win_on_error, int no_msgs)
 {
   struct stat stt;
-  char buf[128];
+  union {
+	char bytes[128];
+	int kermit;
+  } buf;
   int fd, n = 0;
   int pid;
 #ifdef HAVE_ERRNO_H
   int s_errno;
 #endif
 
+#ifdef USE_SOCKET
+#define SOCKET_PREFIX "unix#"
+    portfd_is_socket = portfd_is_connected = 0;
+    if (strncmp(dial_tty, SOCKET_PREFIX, strlen(SOCKET_PREFIX)) == 0) {
+      portfd_is_socket = 1;
+    }
+#endif
+
+  if (portfd_is_socket)
+    goto nolock;
+
+#if !HAVE_LOCKDEV
   /* First see if the lock file directory is present. */
   if (P_LOCK[0] && stat(P_LOCK, &stt) == 0) {
 
@@ -173,7 +188,7 @@ int open_term(int doinit, int show_win_on_error)
 #else /* SVR4_LOCKS */
     snprintf(lockfile, sizeof(lockfile),
                        "%s/LCK..%s",
-                       P_LOCK, mbasename(dial_tty, buf, sizeof(buf)));
+                       P_LOCK, mbasename(dial_tty, buf.bytes, sizeof(buf.bytes)));
 #endif /* SVR4_LOCKS */
 
   }
@@ -181,17 +196,17 @@ int open_term(int doinit, int show_win_on_error)
     lockfile[0] = 0;
 
   if (doinit > 0 && lockfile[0] && (fd = open(lockfile, O_RDONLY)) >= 0) {
-    n = read(fd, buf, 127);
+    n = read(fd, buf.bytes, 127);
     close(fd);
     if (n > 0) {
       pid = -1;
       if (n == 4)
         /* Kermit-style lockfile. */
-        pid = *(int *)buf;
+        pid = buf.kermit;
       else {
         /* Ascii lockfile. */
-        buf[n] = 0;
-        sscanf(buf, "%d", &pid);
+        buf.bytes[n] = 0;
+        sscanf(buf.bytes, "%d", &pid);
       }
       if (pid > 0 && kill((pid_t)pid, 0) < 0 &&
           errno == ESRCH) {
@@ -208,10 +223,12 @@ int open_term(int doinit, int show_win_on_error)
       return -1;
     }
   }
+#endif
 
-  if (doinit > 0)
-    lockfile_create();
+  if (doinit > 0 && lockfile_create() != 0)
+	  return -1;
 
+nolock:
   /* Run a special program to disable callin if needed. */
     if (doinit > 0 && P_CALLOUT[0]) {
       if (fastsystem(P_CALLOUT, NULL, NULL, NULL) < 0) {
@@ -227,13 +244,9 @@ int open_term(int doinit, int show_win_on_error)
   if (setjmp(albuf) == 0) {
     portfd = -1;
     signal(SIGALRM, get_alrm);
-    alarm(4);
+    alarm(20);
 #ifdef USE_SOCKET
-#define SOCKET_PREFIX "unix#"
-    portfd_is_socket = portfd_is_connected = 0;
-    if (strncmp(dial_tty, SOCKET_PREFIX, strlen(SOCKET_PREFIX)) == 0) {
-      portfd_is_socket = 1;
-
+    if (portfd_is_socket) {
       portfd_sock_addr.sun_family = AF_UNIX;
       strncpy(portfd_sock_addr.sun_path,
               dial_tty + strlen(SOCKET_PREFIX),
@@ -267,21 +280,25 @@ int open_term(int doinit, int show_win_on_error)
   alarm(0);
   signal(SIGALRM, SIG_IGN);
   if (portfd < 0 && !portfd_is_socket) {
-    if (doinit > 0) {
-      if (stdwin)
-	mc_wclose(stdwin, 1);
+    if (!no_msgs) {
+      if (doinit > 0) {
+	if (stdwin)
+	  mc_wclose(stdwin, 1);
 #ifdef HAVE_ERRNO_H
-      fprintf(stderr, _("minicom: cannot open %s: %s\n"),
-                      dial_tty, strerror(s_errno));
+	fprintf(stderr, _("minicom: cannot open %s: %s\n"),
+			dial_tty, strerror(s_errno));
 #else
-      fprintf(stderr, _("minicom: cannot open %s. Sorry.\n"), dial_tty);
+	fprintf(stderr, _("minicom: cannot open %s. Sorry.\n"), dial_tty);
 #endif
-      lockfile_remove();
-      return -1;
+        lockfile_remove();
+        return -1;
+      }
+
+      if (show_win_on_error)
+	werror(_("Cannot open %s!"), dial_tty);
     }
+
     lockfile_remove();
-    if (show_win_on_error)
-      werror(_("Cannot open %s!"), dial_tty);
     return -1;
   }
 
@@ -300,17 +317,29 @@ int open_term(int doinit, int show_win_on_error)
 static void do_output(const char *s, int len)
 {
   char buf[256];
-  int f;
 
   if (len == 0)
     len = strlen(s);
 
   if (P_PARITY[0] == 'M') {
-    for(f = 0; f < len && f < 256; f++)
+    int f;
+    for (f = 0; f < len && f < (int)sizeof(buf); f++)
       buf[f] = *s++ | 0x80;
-    write(portfd, buf, f);
-  } else
-    write(portfd, s, len);
+    len = f;
+    s = buf;
+  }
+
+  int r;
+  int b = vt_ch_delay ? 1 : len;
+  while (len && (r = write(portfd, s, b)) >= 0)
+    {
+      s   += r;
+      len -= r;
+      if (vt_ch_delay)
+        usleep(vt_ch_delay * 1000);
+      else
+        b = len;
+    }
 }
 
 /* Function to handle keypad mode switches. */
@@ -318,8 +347,7 @@ static void kb_handler(int a, int b)
 {
   cursormode = b;
   keypadmode = a;
-  if (st)
-    curs_status();
+  curs_status();
 }
 
 /*
@@ -429,17 +457,29 @@ void mode_status(void)
  * If real dcd is not supported, Online and Offline will be
  * shown in capitals.
  */
-void time_status(void)
+void time_status(bool time_update_only)
 {
-  if (!st || disable_online_time)
+  if (!st)
     return;
-  mc_wlocate(st, 63, 0);
-  if (online < 0)
-    mc_wprintf(st, " %12.12s ", P_HASDCD[0] == 'Y' ? _("Offline") : _("OFFLINE"));
-  else
-    mc_wprintf(st, " %s %02ld:%02ld", P_HASDCD[0] == 'Y' ? _("Online") : _("ONLINE"),
-            online / 3600, (online / 60) % 60);
 
+  if (time_update_only && disable_online_time)
+    return;
+
+  mc_wlocate(st, 63, 0);
+  if (disable_online_time)
+    {
+      char b[20];
+      mc_wprintf(st, " %s", mbasename(P_PORT, b, sizeof(b)));
+    }
+  else
+    {
+      if (online < 0)
+	mc_wprintf(st, " %12.12s ", P_HASDCD[0] == 'Y' ? _("Offline") : _("OFFLINE"));
+      else
+	mc_wprintf(st, " %s %02ld:%02ld", P_HASDCD[0] == 'Y' ? _("Online") : _("ONLINE"),
+	    online / 3600, (online / 60) % 60);
+
+    }
   ret_csr();
 }
 
@@ -448,30 +488,76 @@ void time_status(void)
  */
 void curs_status(void)
 {
+  if (!st)
+    return;
   mc_wlocate(st, 33, 0);
   mc_wprintf(st, cursormode == NORMAL ? "NOR" : "APP");
   ret_csr();
 }
 
-time_t old_online = -1;
+
+static char status_message[80];
+static int  status_display_msg_until;
+static int  status_message_showing;
+
+void status_set_display(const char *text, int duration_s)
+{
+  time_t t;
+  unsigned l;
+  strncpy(status_message, text, sizeof(status_message));
+  status_message[sizeof(status_message) - 1] = 0;
+  l = strlen(status_message);
+  for (; l < sizeof(status_message) - 1; ++l)
+    status_message[l] = ' ';
+
+  if (duration_s == 0)
+    duration_s = 2;
+
+  time(&t);
+  status_display_msg_until = duration_s + t;
+  status_message_showing = 1;
+}
+
+static void status_display_message(void)
+{
+  if (!st)
+    return;
+  mc_wlocate(st, 0, 0);
+  mc_wprintf(st, " %s", status_message);
+  ret_csr();
+}
+
+time_t old_online = -2;
 
 /*
  * Update the online time.
  */
-static void updtime(void)
+static void update_status_time(void)
 {
+  time_t now;
+  time(&now);
 
-  if (old_online == online)
+  if (status_message_showing) {
+    if (now > status_display_msg_until) {
+      /* time over for status message, restore standard status line */
+      status_message_showing = 0;
+      if (st)
+	show_status();
+    } else
+      status_display_message();
+  }
+
+  if (old_online == online || online <= (old_online + 59))
     return;
-  if ((P_LOGCONN[0] == 'Y') && (old_online >= 0) && (online < 0)) {
+
+  if (P_LOGCONN[0] == 'Y' && old_online >= 0 && online < 0)
     do_log(_("Gone offline (%ld:%02ld:%02ld)"),
            old_online / 3600, (old_online / 60) % 60, old_online % 60);
-  }
+
   old_online = online;
-  if (st) {
-    time_status();
-    ret_csr();
-  }
+
+  if (!status_message_showing)
+    time_status(true);
   mc_wflush();
 }
 
@@ -506,7 +592,6 @@ void timer_update(void)
       time(&start);
       t1 = start;
       online = 0;
-      updtime();
 #ifdef _DCDFLOW
       /* DCD has gotten high, we can turn on hw flow control */
       if (P_HASRTS[0] == 'Y')
@@ -525,20 +610,18 @@ void timer_update(void)
       /* First update the timer for call duration.. */
       time(&t1);
       online = t1 - start;
-      updtime();
     }
     /* ..and THEN notify that we are now offline */
     online = -1;
-    updtime();
   }
 
   /* Update online time */
   if (online >= 0) {
     time(&t1);
     online = t1 - start;
-    if (online > (old_online + 59))
-      updtime();
   }
+
+  update_status_time();
 }
 
 /*
@@ -552,7 +635,7 @@ void show_status(void)
           _(" %7.7sZ for help |           |     | Minicom %-6.6s |       | "),
           esc_key(), VERSION);
   mode_status();
-  time_status();
+  time_status(false);
   curs_status();
   mc_wlocate(st, 56, 0);
   switch(terminal) {
@@ -605,7 +688,6 @@ int do_terminal(void)
 {
   char buf[128];
   int buf_offset = 0;
-  char *ptr;
   int c;
   int x;
   int blen;
@@ -618,7 +700,7 @@ int do_terminal(void)
 
 dirty_goto:
   /* Show off or online time */
-  updtime();
+  update_status_time();
 
   /* If the status line was shown temporarily, delete it again. */
   if (tempst) {
@@ -641,7 +723,7 @@ dirty_goto:
     /* See if window size changed */
     if (size_changed) {
       size_changed = 0;
-#if 1
+      wrapln = us->wrap;
       /* I got the resize code going again! Yeah! */
       mc_wclose(us, 0);
       us = NULL;
@@ -654,16 +736,20 @@ dirty_goto:
       /* Set the terminal modes */
       setcbreak(2); /* Raw, no echo */
       init_emul(terminal, 0);
-#else
-      werror(_("Resize not supported, screen may be messed up!"));
-#endif
     }
     /* Update the timer. */
     timer_update();
 
     /* check if device is ok, if not, try to open it */
     if (!get_device_status(portfd_connected)) {
-      if (open_term(0, 0) < 0) {
+      /* Ok, it's gone, most probably someone unplugged the USB-serial, we
+       * need to free the FD so that a replug can get the same device
+       * filename, open it again and be back */
+      int reopen = portfd == -1;
+      close(portfd);
+      lockfile_remove();
+      portfd = -1;
+      if (open_term(reopen, reopen, 1) < 0) {
         if (!error_on_open_window)
           error_on_open_window = mc_tell(_("Cannot open %s!"), dial_tty);
       } else {
@@ -682,9 +768,10 @@ dirty_goto:
 
     /* Data from the modem to the screen. */
     if ((x & 1) == 1) {
+      char obuf[sizeof(buf)];
+      char *ptr;
 
       if (using_iconv()) {
-        char obuf[sizeof(buf)];
         char *otmp = obuf;
         size_t output_len = sizeof(obuf);
         size_t input_len = blen;
@@ -692,13 +779,20 @@ dirty_goto:
         ptr = buf;
         do_iconv(&ptr, &input_len, &otmp, &output_len);
 
-        if (input_len) { // something remained, we need to adapt buf accordingly
-          memmove(buf, ptr, input_len);
-          buf_offset = input_len;
-        }
+        // something happened at all?
+        if (output_len < sizeof(obuf))
+          {
+            if (input_len)
+              { // something remained, we need to adapt buf accordingly
+                memmove(buf, ptr, input_len);
+                buf_offset = input_len;
+              }
 
-        blen = sizeof(obuf) - output_len;
-        ptr = obuf;
+            blen = sizeof(obuf) - output_len;
+            ptr = obuf;
+          }
+	else
+	  ptr = buf;
       } else {
         ptr = buf;
       }
@@ -731,6 +825,9 @@ dirty_goto:
     if ((x & 2) == 2) {
       /* See which key was pressed. */
       c = keyboard(KGETKEY, 0);
+      if (c == EOF)
+        return EOF;
+
       if (c < 0) /* XXX - shouldn't happen */
         c += 256;
 

@@ -117,8 +117,8 @@ struct pars mpars[] = {
   /* The script program */
   { "runscript",	0,   "scriptprog" },
   /* Modem parameters */
-  { "~^M~AT S7=45 S0=0 L1 V1 X4 &c1 E1 Q0^M",   0,   "minit" },
-  { "^M~ATZ^M~",	0,   "mreset" },
+  { "",                 0,   "minit" },
+  { "",                 0,   "mreset" },
   { "ATDT",		0,   "mdialpre" },
   { "^M",		0,   "mdialsuf" },
   { "ATDP",		0,   "mdialpre2" },
@@ -269,7 +269,7 @@ int readpars(FILE *fp, enum config_type conftype)
     while (isspace(*s))
       s++;
 
-    if (!s || *s == '#')
+    if (!*s || *s == '#')
       continue;
 
     /* Skip old 'pr' and 'pu' marks at the beginning of the line */
