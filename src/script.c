@@ -156,13 +156,40 @@ void myclock(int dummy)
     siglongjmp(ejmp, 1);
 }
 
+static char *buffer; /* The buffer is only growing and never freed... */
+static unsigned buffersize;
+
+static void buf_wr(unsigned idx, char val)
+{
+  if (idx >= buffersize)
+    {
+      buffersize += 64;
+      buffer = realloc(buffer, buffersize);
+    }
+  buffer[idx] = val;
+}
+
+static inline char buf_rd(unsigned idx)
+{
+  return buffer[idx];
+}
+
+static unsigned bufsize()
+{
+  return buffersize;
+}
+
+static inline char *buf()
+{
+  return buffer;
+}
+
 /*
  * Read a word and advance pointer.
  * Also processes quoting, variable substituting, and \ escapes.
  */
 char *getword(char **s)
 {
-  static char buf[90];
   unsigned int len;
   int f;
   int idx = 0;
@@ -175,41 +202,41 @@ char *getword(char **s)
   if (**s == 0)
     return NULL;
 
-  for (len = 0; len < sizeof(buf); len++) {
+  for (len = 0; ; len++) {
     if (sawesc && t[len]) {
       sawesc = 0;
       if (t[len] <= '7' && t[len] >= '0') {
-        buf[idx] = 0;
-        for (f = 0; f < 4 && len < sizeof(buf) && t[len] <= '7' &&
+        buf_wr(idx, 0);
+        for (f = 0; f < 4 && len < bufsize() && t[len] <= '7' &&
              t[len] >= '0'; f++)
-          buf[idx] = 8 * buf[idx] + t[len++] - '0';
-        if (buf[idx] == 0)
-          buf[idx] = '@';
+          buf_wr(idx, 8 * buf_rd(idx) + t[len++] - '0');
+        if (buf_rd(idx) == 0)
+          buf_wr(idx, '@');
         idx++;
         len--;
         continue;
       }
       switch (t[len]) {
         case 'r':
-          buf[idx++] = '\r';
+          buf_wr(idx++, '\r');
           break;
         case 'n':
-          buf[idx++] = '\n';
+          buf_wr(idx++, '\n');
           break;
         case 'b':
-          buf[idx++] = '\b';
+          buf_wr(idx++, '\b');
           break;
         case 'a':
-          buf[idx++] = '\a';
+          buf_wr(idx++, '\a');
           break;
         case 'f':
-          buf[idx++] = '\f';
+          buf_wr(idx++, '\f');
           break;
         case 'c':
-          buf[idx++] = 255;
+          buf_wr(idx++, 255);
           break;
         default:
-          buf[idx++] = t[len];
+          buf_wr(idx++, t[len]);
           break;
       }
       sawesc = 0;
@@ -239,7 +266,7 @@ char *getword(char **s)
         if (env == NULL)
           env = "";
         while (*env)
-          buf[idx++] = *env++;
+          buf_wr(idx++, *env++);
         continue;
       }
     }
@@ -248,20 +275,20 @@ char *getword(char **s)
       char c = toupper(t[len + 1]);
       if (c >= 'A' && c <= '_') {
         len++;
-        buf[idx++] = c - 'A' + 1;
+        buf_wr(idx++, c - 'A' + 1);
         continue;
       }
     }
     if ((!sawq && (t[len] == ' ' || t[len] == '\t')) || t[len] == 0)
       break;
-    buf[idx++] = t[len];
+    buf_wr(idx++, t[len]);
   }
-  buf[idx] = 0;
+  buf_wr(idx, 0);
   *s += len;
   skipspace(s);
   if (sawesc || sawq)
     syntaxerr(_("(word contains ESC or quote)"));
-  return buf;
+  return buf();
 }
 
 /*
@@ -511,10 +538,10 @@ struct line **buildexpect(void)
 int expect(char *text)
 {
   char *s, *w;
-  struct line **seq;
+  struct line **volatile seq;
   struct line oneline;
   struct line *dflseq[2];
-  char *toact = "exit 1";
+  char *volatile toact = "exit 1";
   volatile int found = 0;
   int f, val, c;
   char *action = NULL;

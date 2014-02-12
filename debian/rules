@@ -28,15 +28,13 @@ clean:
 	rm -f configure-stamp build-stamp
 	cp -f /usr/share/misc/config.guess /usr/share/misc/config.sub .
 	[ ! -f Makefile ] || $(MAKE) -i distclean
-	-cat `ls -r debian/patches/*.diff` /dev/null | patch -RNtp1 -r debian/rejected --no-backup-if-mismatch
 	rm -rf debian/minicom
-	rm -f debian/files debian/rejected debian/substvars
+	rm -f debian/files debian/substvars
 	rm -f config.guess config.sub po/*.gmo po/stamp-po
 
 configure-stamp: configure
 	$(testdir)
 	cp -f /usr/share/misc/config.guess /usr/share/misc/config.sub .
-	-cat debian/patches/*.diff | patch -Ntp1 -r debian/rejected --no-backup-if-mismatch
 	./configure $(CONFFLAGS) --prefix=/usr --mandir=/usr/share/man --sysconfdir=/etc/minicom
 	touch configure-stamp
 

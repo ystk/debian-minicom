@@ -44,7 +44,11 @@ static int gotalrm;
 int pendingkeys = 0;
 int io_pending = 0;
 
-static const char *func_key[] = {
+#ifndef NCURSES_CONST
+#define NCURSES_CONST
+#endif
+
+static NCURSES_CONST char *func_key[] = {
   "", "k1", "k2", "k3", "k4", "k5", "k6", "k7", "k8", "k9", "k0",
   "kh", "kP", "ku", "kl", "kr", "kd", "kH", "kN", "kI", "kD",
   "F1", "F2", NULL };
@@ -162,7 +166,7 @@ int wxgetch(void)
   }
 
   /* Some sequence still in memory ? */
-  if (leftmem) {
+  if (leftmem > 0) {
     leftmem--;
     if (leftmem == 0)
       pendingkeys = 0;
@@ -189,7 +193,7 @@ int wxgetch(void)
     }
 
 #if KEY_KLUDGE
-    while((nfound = cread(&c)) < 0 && (errno == EINTR && !gotalrm))
+    while ((nfound = cread(&c)) < 0 && (errno == EINTR && !gotalrm))
       ;
 #else
     while ((nfound = read(0, &c, 1)) < 0 && (errno == EINTR && !gotalrm))
@@ -197,7 +201,7 @@ int wxgetch(void)
 #endif
 
     if (nfound < 1)
-      break;
+      return EOF;
 
     if (len == 1) {
       /* Enter and erase have precedence over anything else */

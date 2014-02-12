@@ -1,3 +1,39 @@
+minicom (2.6.1-1) unstable; urgency=low
+
+  * New upstream release,
+    closes: #659351 (minicom stops receiving in -R utf-8 mode).
+
+ -- Martin A. Godisch <godisch@debian.org>  Sat, 11 Feb 2012 18:53:08 +0100
+
+minicom (2.6-1) unstable; urgency=low
+
+  * New upstream release.
+
+ -- Martin A. Godisch <godisch@debian.org>  Sun, 01 Jan 2012 17:27:25 +0100
+
+minicom (2.5-2) unstable; urgency=low
+
+  * Backported upstream fix to not extend ~ in non-path configs,
+    closes: #621741, thanks to Florian Lohoff and Adam Lackorzynski.
+
+ -- Martin A. Godisch <godisch@debian.org>  Sat, 16 Apr 2011 14:21:27 +0200
+
+minicom (2.5-1) unstable; urgency=low
+
+  * New upstream release,
+    closes: #610511 (string/word size limit to 89 characters),
+    closes: #610512 (scripts never exit).
+  * Removed some Debian patches which are now in upstream.
+
+ -- Martin A. Godisch <godisch@debian.org>  Fri, 04 Feb 2011 20:06:55 +0100
+
+minicom (2.4-4) unstable; urgency=low
+
+  * Updated package to source format 3.0 (quilt).
+  * Updated standards version.
+
+ -- Martin A. Godisch <godisch@debian.org>  Sat, 11 Sep 2010 22:31:26 +0200
+
 minicom (2.4-3) unstable; urgency=medium
 
   * Fixed failing package purge, closes: #591865.

@@ -46,6 +46,8 @@
 #  endif
 #endif
 
+enum { CURRENT_VERSION = 6 };
+
 /* Dialing directory. */
 struct v1_dialent {
   char name[32];
@@ -180,7 +182,7 @@ void mputs(const char *s, int how)
 {
   char c;
 
-  while(*s) {
+  while (*s) {
     if (*s == '^' && (*(s + 1))) {
       s++;
       if (*s == '^')
@@ -218,6 +220,9 @@ void mputs(const char *s, int how)
           toggle_local_echo();
           s++; /* again, move along. */
           continue;
+	case 'G': /* run a script */
+	  runscript(0, s + 1, "", "");
+	  return;
         default:
           s++;
           continue;
@@ -297,8 +302,7 @@ void hangup(void)
   /* If we don't have DCD support fake DCD dropped */
   bogus_dcd = 0;
   mc_wclose(w, 1);
-  if (st)
-    time_status();
+  time_status(false);
 }
 
 /*
@@ -743,6 +747,13 @@ void v5_read(FILE *fp, struct dialent *d)
   convert_to_host_order(d, &dent_n);
 }
 
+void v6_read(FILE *fp, struct dialent *d)
+{
+  struct dialent dent_n;
+  fread(&dent_n, sizeof(dent_n) - sizeof(void *), 1, fp);
+  convert_to_host_order(d, &dent_n);
+}
+
 /* Read version 4 of the dialing directory. */
 void v4_read(FILE *fp, struct dialent *d, struct dver *dv)
 {
@@ -916,6 +927,14 @@ int readdialdir(void)
 	return -1;
       }
       break;
+    case 6:
+      // v6 is the same as v5 but the pointer is not saved and thus does not
+      // have different size on 32 and 64bit systems
+      if (dial_ver.size != sizeof(struct dialent) - sizeof(void *)) {
+        werror(_("Phonelist corrupted"));
+        return -1;
+      }
+      break;
     default:
       werror(_("Unknown dialing directory version"));
       dendd = 1;
@@ -969,6 +988,9 @@ int readdialdir(void)
       case 5:
 	v5_read(fp, d);
 	break;
+      case 6:
+	v6_read(fp, d);
+	break;
     }
     /* MINIX terminal type is obsolete */
     if (d->term == 2)
@@ -982,14 +1004,16 @@ int readdialdir(void)
   }
   d->next = NULL;
   fclose(fp);
-  if (dial_ver.size < sizeof(struct dialent)) {
-    if (snprintf(copycmd,sizeof(copycmd),
-                 "cp %s %s.%hd",dfile,dfile,dial_ver.size) > 0) {
+
+  if (dial_ver.version != CURRENT_VERSION) {
+    if (snprintf(copycmd, sizeof(copycmd),
+                 "cp -p %s %s.v%hd", dfile, dfile, dial_ver.version) > 0) {
       if (P_LOGFNAME[0] != 0)
         do_log("%s", copycmd);
       if (system(copycmd) == 0) {
-        snprintf(copycmd,sizeof(copycmd),
-                 _("Old dialdir copied as %s.%hd"),dfile,dial_ver.size);
+        snprintf(copycmd, sizeof(copycmd),
+                 _("Converted dialdir to new format, old saved as %s.v%hd"),
+                 dfile, dial_ver.version);
         w = mc_tell("%s", copycmd);
         if (w) {
           sleep(2);
@@ -1031,9 +1055,9 @@ static void writedialdir(void)
 
   d = dialents;
   /* Set up version info. */
-  dial_ver.magic = DIALMAGIC;
-  dial_ver.version = 5;
-  dial_ver.size = htons(sizeof(struct dialent));
+  dial_ver.magic   = DIALMAGIC;
+  dial_ver.version = CURRENT_VERSION;
+  dial_ver.size = htons(sizeof(struct dialent) - sizeof(void *));
   dial_ver.res1 = 0;	/* We don't use these res? fields, but let's */
   dial_ver.res2 = 0;	/* initialize them to a known init value for */
   dial_ver.res3 = 0;	/* whoever needs them later / jl 22.09.97    */
@@ -1050,7 +1074,7 @@ static void writedialdir(void)
     oldfl = d->flags;
     d->flags &= FL_SAVE;
     convert_to_save_order(&dent_n, d);
-    if (fwrite(&dent_n, sizeof(dent_n), 1, fp) != 1) {
+    if (fwrite(&dent_n, sizeof(dent_n) - sizeof(void *), 1, fp) != 1) {
       werror(_("Error writing to ~/.dialdir!"));
       fclose(fp);
       return;
@@ -1119,7 +1143,7 @@ static void dedit(struct dialent *d)
   char *name		    = _(" A -  Name                :"),
        *number		    = _(" B -  Number              :"),
        *dial_string	    = _(" C -  Dial string #       :"),
-       *local_echo	    = _(" D -  Local echo          :"),
+       *local_echo_str	    = _(" D -  Local echo          :"),
        *script		    = _(" E -  Script              :"),
        *username	    = _(" F -  Username            :"),
        *password	    = _(" G -  Password            :"),
@@ -1129,12 +1153,12 @@ static void dedit(struct dialent *d)
        *line_settings       = _(" K -  Line Settings       :"),
        *conversion_table    = _(" L -  Conversion table    :"),
        *question            = _("Change which setting?");
-  
+
   w = mc_wopen(5, 4, 75, 19, BDOUBLE, stdattr, mfcolor, mbcolor, 0, 0, 1);
   mc_wprintf(w, "%s %s\n", name, d->name);
   mc_wprintf(w, "%s %s\n", number, d->number);
   mc_wprintf(w, "%s %d\n", dial_string, d->dialtype + 1);
-  mc_wprintf(w, "%s %s\n", local_echo, _(yesno(d->flags & FL_ECHO)));
+  mc_wprintf(w, "%s %s\n", local_echo_str, _(yesno(d->flags & FL_ECHO)));
   mc_wprintf(w, "%s %s\n", script, d->script);
   mc_wprintf(w, "%s %s\n", username, d->username);
   mc_wprintf(w, "%s %s\n", password, d->password);
@@ -1179,7 +1203,7 @@ static void dedit(struct dialent *d)
         break;
       case 'D':
         d->flags ^= FL_ECHO;
-        mc_wlocate(w, mbslen (local_echo) + 1, 3);
+        mc_wlocate(w, mbslen (local_echo_str) + 1, 3);
         mc_wprintf(w, "%s", _(yesno(d->flags & FL_ECHO)));
         mc_wflush();
         break;
@@ -1254,7 +1278,7 @@ static const char *const what[] =
 /* Offsets of what[] entries from position_dialing_directory */
 #define DIALOPTS (sizeof(what) / sizeof(*what))
 #define DIAL_WIDTH 8 /* Width of one entry */
-static size_t what_lens[DIALOPTS]; /* Number of bytes for <= 7 characters */
+static int what_lens[DIALOPTS]; /* Number of bytes for <= 7 characters */
 /* Number of ' ' padding entries at left and right, left is >= 1 */
 static int what_padding[DIALOPTS][2];
 
@@ -1413,7 +1437,7 @@ static void dial_entry(struct dialent *d)
     mode_status();
   }
   newtype = d->term;
-  vt_set(-1, d->flags & FL_WRAP, -1, -1, d->flags & FL_ECHO, -1, -1);
+  vt_set(-1, d->flags & FL_WRAP, -1, -1, d->flags & FL_ECHO, -1, -1, -1);
   local_echo = d->flags & FL_ECHO;
   if (newtype != terminal)
     init_emul(newtype, 1);

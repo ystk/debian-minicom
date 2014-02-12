@@ -1,13 +1,305 @@
-2009-12-20  Adam Lackorzynski  <adam@blackbox>
+2012-02-11  Adam Lackorzynski  <adam@os.inf.tu-dresden.de>
+
+	* configure.in: Set version to 2.6.1.
+
+	* src/main.c, src/minicom.c: iconv: Handle the case that iconv
+	  did not convert anything. Reported by Mike Crowe, Debian #659351.
+
+	* src/ipc.c: Formatting cleanup.
+
+2012-01-14  Adam Lackorzynski  <adam@os.inf.tu-dresden.de>
+
+	* src/main.c: ETIME -> ETIMEDOUT as ETIME is not available on BSDs
+
+2012-01-13  Adam Lackorzynski  <adam@os.inf.tu-dresden.de>
+
+	* src/main.c: Fix invalid memory used, reported by Larry Baker
+
+2011-12-27  Adam Lackorzynski  <adam@os.inf.tu-dresden.de>
+
+	* NEWS: Updates for 2.6.
+
+	* configure.in: Change version to 2.6.
+
+	* src/config.c, src/rwconf.c: Do not set modem init and reset string
+	  anymore, define them empty. Instead, when editing those offer
+	  them as a default.
+
+2011-10-17  Adam Lackorzynski  <adam@os.inf.tu-dresden.de>
+
+	* src/minicom.h, src/main.c, src/dial.c: only update statusline
+	  if there's a change (e.g. for updates times)
+
+2011-09-07  Adam Lackorzynski  <adam@os.inf.tu-dresden.de>
+
+	* src/updown.c: Flush before forking helper program,
+	  patch by Domen Puncer, thanks!
+
+2011-09-03  Adam Lackorzynski  <adam@os.inf.tu-dresden.de>
+
+	* src/minicom.c, src/minicom.h, src/vt100.c: Add timestamps with
+	  milliseconds, based on patch by Raphaël Assénat, thanks!
+
+2011-08-30  Adam Lackorzynski  <adam@os.inf.tu-dresden.de>
+
+	* src/dial.c, src/minicom.c, src/main.c: Cleanups. Print
+	  basename of current device to statusline if online time is disabled.
+
+	* configure.in, src/Makefile.am, src/main.c, src/minicom.c,
+	  src/minicom.h, src/updown.c: Add lockdev support,
+	  by Ludwig Nussel <ludwig.nussel@suse.de>
+
+2011-07-23  Adam Lackorzynski  <adam@os.inf.tu-dresden.de>
+
+	* src/dial.c: add a dialdir version 6 which does not save the
+	  pointer on disk and should now work on 32 and 64 bit
+	  systems equally.
+
+	* configure.in: Use AM_ICONV_LINK...
+
+	* src/script.c: Fix a buffer overflow problem. Thanks Frederic Germain.
+
+	* src/minicom.c: Do not use iconv-functions if iconv is not available.
+
+2011-05-28  Adam Lackorzynski  <adam@os.inf.tu-dresden.de>
+
+	* src/config.c, src/main.c, src/vt100.c, src/vt100.h: Add transmit
+	  delay for every character, based on patch by Nicolas PILLON.
+
+2011-04-16  Adam Lackorzynski  <adam@os.inf.tu-dresden.de>
+
+	* src/config.c: Do not extend tilde to home directory for
+	  non-path arguments. Debian bug #621741
+
+	* configure.in, src/Makefile.am: Add workaround and then use
+	  libiconv for linking, fixes build issue on Mac OS X.
+
+2011-03-23  Adam Lackorzynski  <adam@os.inf.tu-dresden.de>
+
+	* src/main.c: Increase serial port open timeout, by
+	  Lubomir Rintel
+
+	* src/main.c: Set sensible errno if port open times out,
+	  by Lubomir Rintel
+
+2011-02-28  Adam Lackorzynski  <adam@os.inf.tu-dresden.de>
+
+	* src/help.c: Help fix for timestamp toggle by Mark Einon
+
+2011-02-20  Adam Lackorzynski  <adam@os.inf.tu-dresden.de>
+
+	* src/minicom.c: Code consolidation.
+
+	* src/minicom.c, src/minicom.h, src/vt100.c, man/minicom.1: Make
+	  line timestamps three value: every line, every second, and off.
+
+	* man/minicom.1: Wording fix.
+
+2011-02-19  Adam Lackorzynski  <adam@os.inf.tu-dresden.de>
+
+	* src/vt100.c: Cleanups: Delete everything that was in OLD blocks.
+	  Do not explicitly set global variables to 0.
+
+	* src/vt100.c, man/minicom.1: Change timestamp style, prepend every
+	  line. Add in manpage.
+
+	* src/dial.c src/help.c src/ipc.c src/minicom.c src/minicom.h
+	  src/vt100.c src/vt100.h: Addition by Mark Einon
+	  <mark.einon@gmail.com> to add current date/time to each line.
+
+2011-02-14  Adam Lackorzynski  <adam@os.inf.tu-dresden.de>
+
+	* src/file.c: Only enter directory if we have read permissions to
+	  get directory listings, by Jan GÃ¶rig.
+
+	* src/file.c, src/getsdir.c: Cleanup and simplify.
+
+2011-02-12  Adam Lackorzynski  <adam@os.inf.tu-dresden.de>
+
+	* man/runscript.1, man/minicom.1: Fixes by John Bradshaw
+
+2011-02-07  Adam Lackorzynski  <adam@os.inf.tu-dresden.de>
+
+	* src/main.c: Avoid redraw of status line in Offline mode when
+	  nothing changed.
+
+2011-02-05  Adam Lackorzynski  <adam@os.inf.tu-dresden.de>
+
+	* src/minicom.c: Do not lose line wrap setting over terminal resizes.
+
+	* src/main.c: Simplify status line update, also makes status
+	  messages display the amount of time they are actually supposed
+	  to display.
+
+2011-01-29  Adam Lackorzynski  <adam@os.inf.tu-dresden.de>
+
+	* configure.in: Change version to 2.5.
+
+2011-01-24  Adam Lackorzynski  <adam@os.inf.tu-dresden.de>
+
+	* src/script.c: Make word handling more dynamic, and thus allowing
+	  words > 89 chars. Reported via Debian BTS #610511.
+
+	* po/da.po: Update from translation team.
+
+2011-01-16  Adam Lackorzynski  <adam@os.inf.tu-dresden.de>
+
+	* NEWS: Update.
+
+	* ChangeLog: Convert to UTF8 encoding.
+
+	* man/ascii-xfr.1: Fix typos, Thanks Jan GÃ¶rig,
+	  https://bugzilla.redhat.com/show_bug.cgi?id=669098
+
+	* src/rwconf.c: Fix config file parsing bug, Thanks Jan GÃ¶rig,
+	  https://bugzilla.redhat.com/show_bug.cgi?id=669406
+
+2011-01-09  Adam Lackorzynski  <adam@os.inf.tu-dresden.de>
+
+	* po/da.po: Update from translation team.
+
+2011-01-06  Adam Lackorzynski  <adam@os.inf.tu-dresden.de>
+
+	* po/da.po: Update from translation team.
+
+2010-12-12  Adam Lackorzynski  <adam@os.inf.tu-dresden.de>
+
+	* src/dial.c: For macros, add \g<script> to launch runscript.
+
+	* src/window.c: _attron(): fix bold with inverse mode, do not handle
+	  prettiness
+
+	* src/vt100.c: state2(): order list in switch for readability.
+
+2010-10-26  Adam Lackorzynski  <adam@os.inf.tu-dresden.de>
+
+	* src/ascii-xfr.c: check_answer: Cleanup.
+	  Thanks Kjell M. Myksvoll.
+
+	* src/ascii-xfr.c: lineout: change to use explicit length info
+	  instead of strlen, makes storing data with included '\0' work.
+	  Thanks Kjell M. Myksvoll.
+
+2010-09-11  Adam Lackorzynski  <adam@os.inf.tu-dresden.de>
+
+	* src/vt100.c: remove 'break' in ESC[u handling which should
+	  not have been there. 
+
+2010-07-19  Adam Lackorzynski  <adam@os.inf.tu-dresden.de>
+
+	* src/main.c, src/minicom.c, src/minicom.h: Handle device
+	  reconnects more smoothly by reopening a closed device
+	  (USB-serial dongles).
+
+2010-06-06  Adam Lackorzynski  <adam@os.inf.tu-dresden.de>
+
+	* src/vt100.c: Use local_echo in vt_init.
+
+	* src/dial.c, src/config.c: Rename local variable local_echo to
+	  local_echo_str as there's also a global variable local_echo.
+
+2010-05-30  Adam Lackorzynski  <adam@os.inf.tu-dresden.de>
+
+	* src/updown.c: Check for error conditions on fd of running script.
+	  for minicom bug-tracker #312517, by Chris Simmonds
+
+2010-04-25  Adam Lackorzynski  <adam@os.inf.tu-dresden.de>
+
+	* src/updown.c: Use FHS compliant lock-file format.
+
+2010-04-01  Adam Lackorzynski  <adam@os.inf.tu-dresden.de>
+
+	* configure.in, src/Makefile.am: Add -std=gnu99 -W -Wall if using
+	  gcc, fix CFLAGS usage.
+
+2010-03-14  Adam Lackorzynski  <adam@os.inf.tu-dresden.de>
+
+	* src/minicom.c: Put 'Port %s' under gettext. By Jorma Karvonen.
+
+	* src/config.c: Make sure the global config file is world readable,
+	  Redhat patch.
+	
+	* src/updown.c: Removed static buffers that limit multi-file
+	  zmodem functionality. (Redhat #98654)
+	
+	* src/vt100.c: Check vttrans to prevent segfaults with certain
+	  ESC sequences. (Fedora #84129)
+
+	* src/file.c: Fix error handling for the case when you attempt
+	  to "goto" a dir that doesn't exist. (Fedora #103902)
+	
+	* src/file.c, src/util.c: Consider files names with spaces,
+	  Fedora Patch 98655 and Debian Patch #199924.
+
+	* src/config.c: Do not exit if no global config file is there,
+	  we do not require it.
+	
+	* po/fi.po: Update from translation team.
+
+2010-03-11  Adam Lackorzynski  <adam@os.inf.tu-dresden.de>
+
+	* configure.in: change check for termcap.h to only check for
+	  termcap.h if ncurses/termcap.h was not found, so that not
+	  both are enabled.
+
+2010-03-09  Adam Lackorzynski  <adam@os.inf.tu-dresden.de>
+
+	* src/window.c: remove include of termcap.h because it's already
+	  done in a better way from port.h
+
+2010-02-07  Adam Lackorzynski  <adam@os.inf.tu-dresden.de>
+
+	* src/minicom.c, po/*.po: Don't use carriage return
+	  in internationalized strings
+
+	* src/script.c: Make variables seq and toact volatile to fix
+	  setjmp warning. By Pavel Roskin.
+
+	* src/main.c: Fix aliasing warning. By Pavel Roskin.
+
+	* src/dial.c, src/file.c: Define what_lens as int, not as size_t.
+	  By Pavel Roskin.
+
+	* src/main.c: Better handling of ncurses const'ness. By Pavel Roskin.
+
+	* src/main.c, src/wkeys.c, src/minicom.c: Fix crash when terminal
+	  reads return EOF. By Pavel Roskin.
+
+2010-01-05  Adam Lackorzynski  <adam@os.inf.tu-dresden.de>
+
+	* src/main.c: Fix status line to redraw only if necessary.
+
+2010-01-03  Adam Lackorzynski  <adam@os.inf.tu-dresden.de>
+
+	* configure.in: Change version to 2.4+dev
+
+2010-01-01  Adam Lackorzynski  <adam@os.inf.tu-dresden.de>
+
+	* src/minicom.c: Initialize 'local-echo' and 'add-LF' properly.
+
+	* src/main.c, src/config.c: Fix error when compiling with
+	   -Wformat -Werror=format-security, thanks Guillaume Rousse.
+
+	* src/main.c: Fix: Do not all update_status if 'st' is not set.
+
+2009-12-26  Adam Lackorzynski  <adam@os.inf.tu-dresden.de>
+
+	* src/main.c, src/minicom.h, src/minicom.c: Do not use the error
+	  message display for informational messages but instead display
+	  them in the status line without blocking the whole program.
+
+	* src/updown.c: Fix possible snprintf overrun.
+
+2009-12-20  Adam Lackorzynski  <adam@os.inf.tu-dresden.de>
 
 	* configure.in: change version number to 2.4
 
-2009-11-17  Adam Lackorzynski  <adam@blackbox>
+2009-11-17  Adam Lackorzynski  <adam@os.inf.tu-dresden.de>
 
 	* src/dial.c: Overflow fix because of too long translated message,
 	              by Vladimir V. Kamarzin, #312083
 
-2009-11-16  Adam Lackorzynski  <adam@blackbox>
+2009-11-16  Adam Lackorzynski  <adam@os.inf.tu-dresden.de>
 
 	* INSTALL: delete, comes with automake
 
@@ -17,11 +309,11 @@
 
 	* NEWS: update to 2.4
 
-2009-11-15  Adam Lackorzynski  <adam@blackbox>
+2009-11-15  Adam Lackorzynski  <adam@os.inf.tu-dresden.de>
 
 	* autogen.sh: Use automake-1.11
 
-2009-07-25  Adam Lackorzynski  <adam@blackbox>
+2009-07-25  Adam Lackorzynski  <adam@os.inf.tu-dresden.de>
 
 	* man/minicom.1: Add options -b, -D and -R.
 
@@ -106,7 +398,7 @@
 2008-04-25  Adam Lackorzynski  <adam@os.inf.tu-dresden.de>
 
 	* src/config.c: increase space for newline timeout value,
-	                by barnabé bertrand, thanks.
+	                by barnabÃ© bertrand, thanks.
 
 2008-03-21  Adam Lackorzynski  <adam@os.inf.tu-dresden.de>
 
@@ -890,7 +1182,7 @@
 
 	* acconfig.h, src/Makefile.am, src/dial.c, src/ipc.c, src/main.c, src/minicom.h, src/sysdep1.c, src/sysdep1_s.c:
 	        Socket support, patch initially for minicom 1.82.1 by
-	        Jork Löser <jork.loeser@inf.tu-dresden.de>
+	        Jork LÃ¶ser <jork.loeser@inf.tu-dresden.de>
 
 2003-03-31  Martin Godisch <martin@godisch.de>
 
@@ -908,7 +1200,7 @@
 2003-03-30  Adam Lackorzynski  <adam@os.inf.tu-dresden.de>
 
 	* po/hu.po: add hungarian translation,
-	            thanks Márton Németh <nm127@hszk.bme.hu>
+	            thanks MÃ¡rton NÃ©meth <nm127@hszk.bme.hu>
 
 2003-03-30  Martin Godisch <martin@godisch.de>
 
@@ -975,7 +1267,7 @@
 
 	* doc/Announce-2.00: 2.00.0 released
 
-2001-10-01  Arkadiusz Mi¶kiewicz  <misiek@pld.org.pl>
+2001-10-01  Arkadiusz MiÂ¶kiewicz  <misiek@pld.org.pl>
 
 	* src/Makefile.am, src/minicom.h: fixed build outside source tree
 
@@ -984,7 +1276,7 @@
 	* po/Attic/fi_FI.po, man/minicom.1, configure.in:
 	changed version number to 2.00.0
 
-2001-09-28  Gaël Quéri  <gael@pld.org.pl>
+2001-09-28  GaÃ«l QuÃ©ri  <gael@pld.org.pl>
 
 	* po/fr.po: updated the translation for minicom 1.90
 
@@ -993,14 +1285,14 @@
 	* src/file.c:
 	Fixed parentheses mismatching after the previous 'fix' of the 4th of July.
 
-2001-07-04  Tomasz K³oczko  <kloczek@pld.org.pl>
+2001-07-04  Tomasz KÂ³oczko  <kloczek@pld.org.pl>
 
 	* src/dial.c, src/file.c, src/minicom.c, src/updown.c:
 	fixes format string abuses.
 
 	* man/minicom.1: s/windows-based/window based/
 
-2001-05-30  Arkadiusz Mi¶kiewicz  <misiek@pld.org.pl>
+2001-05-30  Arkadiusz MiÂ¶kiewicz  <misiek@pld.org.pl>
 
 	* po/pl.po: fixed fuzzy translation
 
@@ -1018,7 +1310,7 @@
 	* minicom.spec.in:
 	added Finnish description, removed lang(ko) and added lang(ru)
 
-2001-05-04  Tomasz K³oczko  <kloczek@pld.org.pl>
+2001-05-04  Tomasz KÂ³oczko  <kloczek@pld.org.pl>
 
 	* src/dial.c, src/minicom.c, src/updown.c:
 	fixes buffer overflow at logging cmdline and other (I don't know who is real
@@ -1032,7 +1324,7 @@
 	* configure.in:
 	Korean removed from ALL_LINGUAS until somebody updates the translations
 
-2001-04-18  Arkadiusz Mi¶kiewicz  <misiek@pld.org.pl>
+2001-04-18  Arkadiusz MiÂ¶kiewicz  <misiek@pld.org.pl>
 
 	* intl/Attic/ChangeLog, intl/Attic/Makefile.in, intl/Attic/VERSION, intl/Attic/bindtextdom.c, intl/Attic/cat-compat.c, intl/Attic/dcgettext.c, intl/Attic/dgettext.c, intl/Attic/explodename.c, intl/Attic/finddomain.c, intl/Attic/gettext.c, intl/Attic/gettext.h, intl/Attic/gettextP.h, intl/Attic/hash-string.h, intl/Attic/intl-compat.c, intl/Attic/l10nflist.c, intl/Attic/libgettext.h, intl/Attic/linux-msg.sed, intl/Attic/loadinfo.h, intl/Attic/loadmsgcat.c, intl/Attic/localealias.c, intl/Attic/po2tbl.sed.in, intl/Attic/textdomain.c, intl/Attic/xopen-msg.sed:
 	intl directory is filled at autogen.sh call
@@ -1055,12 +1347,12 @@
 	* po/ru.po, doc/Locales, doc/russian, extras/tables/mc.rus, AUTHORS, configure.in:
 	Added translations for Russian
 
-2001-02-22  Tomasz K³oczko  <kloczek@pld.org.pl>
+2001-02-22  Tomasz KÂ³oczko  <kloczek@pld.org.pl>
 
 	* README:
 	- fixed browseable cvs web interface on http://cvs.pld.org.pl/.
 
-2001-02-21  Arkadiusz Mi¶kiewicz  <misiek@pld.org.pl>
+2001-02-21  Arkadiusz MiÂ¶kiewicz  <misiek@pld.org.pl>
 
 	* src/common.c, src/dial.c, src/port.h:
 	include time.h on all systems. Patch by Adam J. Richter <adam@yggdrasil.com>.
@@ -1069,7 +1361,7 @@
 
 	* man/minicom.1: Command line option -w documented
 
-2001-02-07  Tomasz K³oczko  <kloczek@pld.org.pl>
+2001-02-07  Tomasz KÂ³oczko  <kloczek@pld.org.pl>
 
 	* configure.in: - added cs_CZ to ALL_LINGUAS.
 
@@ -1077,7 +1369,7 @@
 
 	* po/cs_CZ.po: Czech translations added to the po directory
 
-2001-02-06  Tomasz K³oczko  <kloczek@pld.org.pl>
+2001-02-06  Tomasz KÂ³oczko  <kloczek@pld.org.pl>
 
 	* po/Attic/Makefile.in.in:
 	- removed Makefile.in.in (this file is autogenerated by
@@ -1138,7 +1430,7 @@
 	* src/port.h, src/sysdep.h, src/sysdep1.c, src/sysdep2.c, configure.in, acconfig.h:
 	DCD fixes by Gael, changed version in configure.in to 1.90
 
-2000-06-16  Arkadiusz Mi¶kiewicz  <misiek@pld.org.pl>
+2000-06-16  Arkadiusz MiÂ¶kiewicz  <misiek@pld.org.pl>
 
 	* man/minicom.1, AUTHORS, doc/ChangeLog.old, doc/pl-translation.txt, minicom.spec.in:
 	- unify my email
@@ -1163,7 +1455,7 @@
 	* man/minicom.1:
 	Removed Michael Johnson's email address, it turn out to be somebody else's
 
-2000-04-14  Arkadiusz Mi¶kiewicz  <misiek@pld.org.pl>
+2000-04-14  Arkadiusz MiÂ¶kiewicz  <misiek@pld.org.pl>
 
 	* README: - added information about anoncvs
 
@@ -1174,11 +1466,11 @@
 	* src/config.c, src/dial.c:
 	Added an #if directive to fix compile errors when compiled without HAVE_MACROS
 
-2000-03-29  Gaël Quéri  <gael@pld.org.pl>
+2000-03-29  GaÃ«l QuÃ©ri  <gael@pld.org.pl>
 
 	* AUTHORS: fixed some typos
 
-2000-03-27  Gaël Quéri  <gael@pld.org.pl>
+2000-03-27  GaÃ«l QuÃ©ri  <gael@pld.org.pl>
 
 	* minicom.spec.in: - LINGUAS has to be unset to make rpm work
 	- replaced --sysconf by --sysconfdir for %configure
@@ -1189,12 +1481,12 @@
 	- SVR4 locking patches by Chaim Frenkel (chaimf@pobox.com)
 	- updated translation file for Finnish, some messages seemed to be missing
 
-2000-02-17  Arkadiusz Mi¶kiewicz  <misiek@pld.org.pl>
+2000-02-17  Arkadiusz MiÂ¶kiewicz  <misiek@pld.org.pl>
 
 	* src/Makefile.am, configure.in:
 	- add -I../lib only when system getopt.h is missing
 
-2000-02-16  Gaël Quéri  <gael@pld.org.pl>
+2000-02-16  GaÃ«l QuÃ©ri  <gael@pld.org.pl>
 
 	* acconfig.h: added _HISTORY
 
@@ -1205,7 +1497,7 @@
 	updated the translation of the command-line help and the serial port
 	setup dialog
 
-2000-02-14  Arkadiusz Mi¶kiewicz  <misiek@pld.org.pl>
+2000-02-14  Arkadiusz MiÂ¶kiewicz  <misiek@pld.org.pl>
 
 	* po/Attic/ko.po, po/pl.po, po/pt_BR.po, po/Attic/fi_FI.po, po/fr.po, po/ja.po:
 	- fixed pl.po
@@ -1236,7 +1528,7 @@
 	the mailing list as diffs to 1.83.0, but noticed that they had not been
 	applied to the cvs directory yet.
 
-2000-02-10  Arkadiusz Mi¶kiewicz  <misiek@pld.org.pl>
+2000-02-10  Arkadiusz MiÂ¶kiewicz  <misiek@pld.org.pl>
 
 	* src/minicom.c: - always use getopt_long()
 
@@ -1257,11 +1549,11 @@
 
 	* src/file.c: - added few casts to avoid warnings
 
-2000-02-09  Gaël Quéri  <gael@pld.org.pl>
+2000-02-09  GaÃ«l QuÃ©ri  <gael@pld.org.pl>
 
 	* minicom.spec.in: Fixed typos in French description
 
-2000-02-09  Arkadiusz Mi¶kiewicz  <misiek@pld.org.pl>
+2000-02-09  Arkadiusz MiÂ¶kiewicz  <misiek@pld.org.pl>
 
 	* doc/Attic/Porting, doc/Makefile.am: - removed obsolete file
 
@@ -1269,12 +1561,12 @@
 	- changed _SELECT -> HAVE_SELECT and _NO_TERMIOS -> !HAVE_TERMIOS_H
 	  (fixes problem with hanging minicom on start)
 
-2000-02-02  Arkadiusz Mi¶kiewicz  <misiek@pld.org.pl>
+2000-02-02  Arkadiusz MiÂ¶kiewicz  <misiek@pld.org.pl>
 
 	* configure.in:
 	- try to link with tinfo library before ncurses and other *curses
 
-2000-01-27  Arkadiusz Mi¶kiewicz  <misiek@pld.org.pl>
+2000-01-27  Arkadiusz MiÂ¶kiewicz  <misiek@pld.org.pl>
 
 	* src/rcsid.h: - RCSID() macro definition
 
@@ -1283,22 +1575,22 @@
 
 	* src/dial.c: - don't declare dial_user and dial_pass as static
 
-2000-01-18  Arkadiusz Mi¶kiewicz  <misiek@pld.org.pl>
+2000-01-18  Arkadiusz MiÂ¶kiewicz  <misiek@pld.org.pl>
 
 	* src/config.c: - don't declare J_col[] as static
 
 	* src/common.c, src/dial.c: - include time.h on AIX
 
-2000-01-03  Arkadiusz Mi¶kiewicz  <misiek@pld.org.pl>
+2000-01-03  Arkadiusz MiÂ¶kiewicz  <misiek@pld.org.pl>
 
 	* minicom.spec.in: - fixed Japanese locale
 
-1999-12-30  Arkadiusz Mi¶kiewicz  <misiek@pld.org.pl>
+1999-12-30  Arkadiusz MiÂ¶kiewicz  <misiek@pld.org.pl>
 
 	* autogen.sh, configure.in, po/Attic/ja_JP.ujis.po, po/ja.po:
 	- fixed Japanese locale
 
-1999-12-22  Arkadiusz Mi¶kiewicz  <misiek@pld.org.pl>
+1999-12-22  Arkadiusz MiÂ¶kiewicz  <misiek@pld.org.pl>
 
 	* doc/ChangeLog.old, doc/Makefile.am:
 	- moved ChangeLog to doc/ChangeLog.old. There will be new
@@ -1314,7 +1606,7 @@
 
 	* po/pt_BR.po: Updated translation file for Portuguese.
 
-1999-12-20  Arkadiusz Mi¶kiewicz  <misiek@pld.org.pl>
+1999-12-20  Arkadiusz MiÂ¶kiewicz  <misiek@pld.org.pl>
 
 	* Makefile.am, configure.in, minicom.spec.in: - first try to `make rpm'
 
@@ -1333,7 +1625,7 @@
 	- fixed compilation on libc5 systems (Slackware 4.0)
 	- added few more string to translate
 
-1999-12-18  Arkadiusz Mi¶kiewicz  <misiek@pld.org.pl>
+1999-12-18  Arkadiusz MiÂ¶kiewicz  <misiek@pld.org.pl>
 
 	* lib/libport.h: - cleanups
 

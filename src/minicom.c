@@ -22,6 +22,7 @@
  * kubota@debian.or.jp 07/98  - Added option -C to start capturing from the
  *				command line
  * jl  09.07.98 added option -S to start a script at startup
+ * mark.einon@gmail.com 16/02/11 - Added option to timestamp terminal output
  */
 #ifdef HAVE_CONFIG_H
 #include <config.h>
@@ -57,6 +58,8 @@ static void signore(int sig)
     printf("%s\r\n", _("Got signal %d"), sig);
 }
 #endif /*DEBUG*/
+
+static int line_timestamp;
 
 /*
  * Sub - menu's.
@@ -461,7 +464,7 @@ static void scrollback(void)
   if (b_st->xs < 127)
     hline0[b_st->xs] = 0;
   hline = hline0;
-  mc_wprintf(b_st, hline);
+  mc_wprintf(b_st, "%s", hline);
   mc_wredraw(b_st, 1);
   mc_wflush();
 
@@ -514,7 +517,7 @@ static void scrollback(void)
         searchhist(b_us, look_for);
         /* must redraw status line... */
         mc_wlocate(b_st, 0, 0); /* move back to column 0! */
-        mc_wprintf(b_st, hline); /* and show the above-defined hline */
+        mc_wprintf(b_st, "%s", hline); /* and show the above-defined hline */
         mc_wredraw(b_st, 1); /* again... */
         /* highlight any matches */
         if (wcslen(look_for) > 1) {
@@ -723,7 +726,7 @@ static void scrollback(void)
           hline = hline0;
         }
         mc_wlocate(b_st, 0, 0);
-        mc_wprintf(b_st, hline);
+        mc_wprintf(b_st, "%s", hline);
         mc_wredraw(b_st, 1);
         if (citemode)
           mc_wlocate(b_us, 0, cite_y);
@@ -743,7 +746,7 @@ static void scrollback(void)
           break;
         }
         mc_wlocate(b_st, 0, 0);
-        mc_wprintf(b_st, hline);
+        mc_wprintf(b_st, "%s", hline);
         mc_wredraw(b_st, 1);
         mc_wdrawelm_inverse(b_us, cite_y, mc_getline(b_us, cite_ystart));
         mc_wlocate(b_us, 0, cite_y);
@@ -762,7 +765,7 @@ static void scrollback(void)
         }
         drawcite_whole(b_us, y, cite_ystart, cite_yend);
         mc_wlocate(b_st, 0, 0);
-        mc_wprintf(b_st, hline);
+        mc_wprintf(b_st, "%s", hline);
         mc_wredraw(b_st, 1);
         if (citemode)
           mc_wlocate(b_us, 0, cite_y);
@@ -840,23 +843,59 @@ static void helpthem(void)
     "Report bugs to <minicom-devel@lists.alioth.debian.org>.\n"), CONFDIR);
 }
 
+static void set_addlf(int val)
+{
+  vt_set(val, -1, -1, -1, -1, -1, -1, -1);
+}
+
 /* Toggle linefeed addition.  Can be called through the menu, or by a macro. */
 void toggle_addlf(void)
 {
   addlf = !addlf;
-  vt_set(addlf, -1, -1, -1, -1, -1, -1);
+  set_addlf(addlf);
+}
+
+static void set_local_echo(int val)
+{
+  vt_set(-1, -1, -1, -1, val, -1 ,-1, -1);
 }
 
 /* Toggle local echo.  Can be called through the menu, or by a macro. */
 void toggle_local_echo(void)
 {
   local_echo = !local_echo;
-  vt_set(-1, -1, -1, -1, local_echo, -1 ,-1);
+  set_local_echo(local_echo);
 }
 
+static void set_line_timestamp(int val)
+{
+  vt_set(-1, -1, -1, -1 ,-1, -1, -1, val);
+}
+
+/* Toggle host timestamping on/off */
+static void toggle_line_timestamp(void)
+{
+  ++line_timestamp;
+  line_timestamp %= TIMESTAMP_LINE_NR_OF_OPTIONS;
+  set_line_timestamp(line_timestamp);
+}
 
 /* -------------------------------------------- */
 
+static void do_iconv_just_copy(char **inbuf, size_t *inbytesleft,
+                               char **outbuf, size_t *outbytesleft)
+{
+  while (*outbytesleft && *inbytesleft)
+    {
+      *(*outbuf) = *(*inbuf);
+      ++(*outbuf);
+      ++(*inbuf);
+      --(*outbytesleft);
+      --(*inbytesleft);
+    }
+}
+
+#ifdef HAVE_ICONV
 static iconv_t iconv_rem2local;
 static int iconv_enabled;
 
@@ -890,8 +929,11 @@ static void init_iconv(const char *remote_charset)
            "%s//TRANSLIT", tmp);
   local_charset[sizeof(local_charset) - 1] = 0;
 
-  //printf("Remote charset: %s\n", remote_charset);
-  //printf("Local charset: %s\n", local_charset);
+  if (0)
+    {
+      printf("Remote charset: %s\n", remote_charset);
+      printf("Local charset: %s\n", local_charset);
+    }
 
   iconv_rem2local = iconv_open(local_charset, remote_charset);
   if (iconv_rem2local != (iconv_t)-1)
@@ -907,16 +949,15 @@ void do_iconv(char **inbuf, size_t *inbytesleft,
   if (!iconv_enabled
       || iconv(iconv_rem2local,
                inbuf, inbytesleft,
-               outbuf, outbytesleft) == (size_t)-1) {
-    memcpy(*outbuf, *inbuf,
-           *outbytesleft < *inbytesleft ? *outbytesleft : *inbytesleft);
+               outbuf, outbytesleft) == (size_t)-1)
+    {
+      do_iconv_just_copy(inbuf, inbytesleft, outbuf, outbytesleft);
 
-    // in case of error re-init conversion descriptor
-    // (will this work?)
-    if (iconv_enabled)
-      iconv(iconv_rem2local, NULL, NULL, NULL, NULL);
-    return;
-  }
+      // in case of error re-init conversion descriptor
+      // (will this work?)
+      if (iconv_enabled)
+	iconv(iconv_rem2local, NULL, NULL, NULL, NULL);
+    }
 }
 
 static void close_iconv(void)
@@ -924,6 +965,28 @@ static void close_iconv(void)
   if (iconv_enabled)
     iconv_close(iconv_rem2local);
 }
+#else
+
+int using_iconv(void)
+{
+  return 0;
+}
+
+static void init_iconv(const char *remote_charset)
+{
+  (void)remote_charset;
+}
+
+void do_iconv(char **inbuf, size_t *inbytesleft,
+              char **outbuf, size_t *outbytesleft)
+{
+  do_iconv_just_copy(inbuf, inbytesleft, outbuf, outbytesleft);
+}
+
+static void close_iconv(void)
+{
+}
+#endif
 /* -------------------------------------------- */
 
 
@@ -990,6 +1053,7 @@ int main(int argc, char **argv)
   stdattr = XA_NORMAL;
   us = NULL;
   addlf = 0;
+  line_timestamp = 0;
   wrapln = 0;
   disable_online_time = 0;
   local_echo = 0;
@@ -1171,7 +1235,7 @@ int main(int argc, char **argv)
             exit(1);
           }
           docap = 1;
-          vt_set(addlf, -1, docap, -1, -1, -1, -1);
+          vt_set(addlf, -1, docap, -1, -1, -1, -1, -1);
           break;
         case 'S': /* start Script */
           strncpy(scr_name, optarg, 33);
@@ -1213,7 +1277,7 @@ int main(int argc, char **argv)
 
   if (screen_iso && screen_ibmpc)
     /* init VT */
-    vt_set(-1, -1, -1, -1, -1, -1, 1);
+    vt_set(-1, -1, -1, -1, -1, -1, 1, -1);
 
   /* Avoid fraude ! */	
   for (s = use_port; *s; s++)
@@ -1272,14 +1336,14 @@ int main(int argc, char **argv)
 
   if (dial_tty == NULL) {
     if (!dosetup) {
-      while ((dial_tty = get_port(P_PORT)) != NULL && open_term(doinit, 1) < 0)
+      while ((dial_tty = get_port(P_PORT)) != NULL && open_term(doinit, 1, 0) < 0)
         ;
       if (dial_tty == NULL)
         exit(1);
     }
   }
   else {
-    if (!dosetup && open_term(doinit, 1) < 0)
+    if (!dosetup && open_term(doinit, 1, 0) < 0)
       exit(1);
   }
 
@@ -1296,7 +1360,7 @@ int main(int argc, char **argv)
       mc_wclose(stdwin, 1);
       exit(0);
     }
-    while ((dial_tty = get_port(P_PORT)) != NULL && open_term(doinit, 1) < 0)
+    while ((dial_tty = get_port(P_PORT)) != NULL && open_term(doinit, 1, 0) < 0)
       ;
     if (dial_tty == NULL)
       exit(1);
@@ -1363,9 +1427,9 @@ int main(int argc, char **argv)
 #if defined (__DATE__) && defined (__TIME__)
   mc_wprintf(us, "%s %s, %s.\r\n",_("Compiled on"), __DATE__,__TIME__);
 #endif
-  mc_wprintf(us, "Port %s\r\n", P_PORT);
+  mc_wprintf(us, "%s %s\r\n", _("Port"), P_PORT);
   if (using_iconv())
-    mc_wprintf(us, _("Using character set conversion\r\n"));
+    mc_wprintf(us, "%s\r\n", _("Using character set conversion"));
   mc_wprintf(us, _("\nPress %sZ for help on special keys%c\n\n"),esc_key(),'\r');
 
   readdialdir();
@@ -1376,20 +1440,24 @@ int main(int argc, char **argv)
   if (cmd_dial)
     dialone(cmd_dial);
 
+  set_local_echo(local_echo);
+  set_addlf(addlf);
+  set_line_timestamp(line_timestamp);
+
   /* The main loop calls do_terminal and gets a function key back. */
   while (!quit) {
     c = do_terminal();
 dirty_goto:
     switch (c + 32 *(c >= 'A' && c <= 'Z')) {
       case 'a': /* Add line feed */
-	toggle_addlf();
+        toggle_addlf();
         s = addlf ?  _("Add linefeed ON") : _("Add linefeed OFF");
-        werror("%s", s);
+        status_set_display(s, 0);
         break;
       case 'e': /* Local echo on/off. */
-	toggle_local_echo();
+        toggle_local_echo();
         s = local_echo ?  _("Local echo ON") : _("Local echo OFF");
-        werror("%s", s);
+        status_set_display(s, 0);
         break;
       case 'z': /* Help */
         c = help();
@@ -1474,7 +1542,7 @@ dirty_goto:
           if (c == 1)
             docap = 0;
         }
-        vt_set(addlf, -1, docap, -1, -1, -1, -1);
+        vt_set(addlf, -1, docap, -1, -1, -1, -1, -1);
         break;
       case 'p': /* Set parameters */
         get_bbp(P_BAUDRATE, P_BITS, P_PARITY, P_STOPB, 0);
@@ -1498,10 +1566,30 @@ dirty_goto:
           init_emul(c, 1);
         break;
       case 'w': /* Line wrap on-off */
-        c = (!us->wrap);
-        vt_set(addlf, c, docap, -1, -1, -1, -1);
+        c = !us->wrap;
+        vt_set(addlf, c, docap, -1, -1, -1, -1, -1);
         s = c ? _("Linewrap ON") : _("Linewrap OFF");
-        werror("%s", s);
+	status_set_display(s, 0);
+        break;
+      case 'n': /* Line timestamp */
+	toggle_line_timestamp();
+        switch (line_timestamp)
+          {
+          default:
+          case TIMESTAMP_LINE_OFF:
+            s = _("Timestamp OFF");
+            break;
+          case TIMESTAMP_LINE_SIMPLE:
+            s = _("Timestamp every line (simple)");
+            break;
+          case TIMESTAMP_LINE_EXTENDED:
+            s = _("Timestamp every line (extended)");
+            break;
+          case TIMESTAMP_LINE_PER_SECOND:
+            s = _("Timestamp lines every second");
+            break;
+          }
+        status_set_display(s, 0);
         break;
       case 'o': /* Configure Minicom */
         (void) config(0);
@@ -1521,12 +1609,14 @@ dirty_goto:
       case 'i': /* Re-init, re-open portfd. */
         cursormode = (cursormode == NORMAL) ? APPL : NORMAL;
         keyboard(cursormode == NORMAL ? KCURST : KCURAPP, 0);
-        if (st)
-          curs_status();
+        curs_status();
         break;
       case 'y': /* Paste file */
 	paste_file();
 	break;
+      case EOF: /* Cannot read from stdin anymore, exit silently */
+        quit = NORESET;
+        break;
       default:
         break;
     }
@@ -1554,8 +1644,7 @@ dirty_goto:
   mc_wclose(st, 0);
   mc_wclose(stdwin, 1);
   keyboard(KUNINSTALL, 0);
-  if (lockfile[0])
-    unlink(lockfile);
+  lockfile_remove();
   close(portfd);
 
   if (quit != NORESET && P_CALLIN[0])

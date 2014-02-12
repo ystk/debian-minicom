@@ -51,14 +51,11 @@ void read_parms(void)
   char *p;
 
   /* Read global parameters */
-  if ((fp = fopen(parfile, "r")) == NULL) {
-    fprintf(stderr,
-            _("minicom: there is no global configuration file %s\n"), parfile);
-    fputs(_("Ask your sysadmin to create one (with minicom -s).\n"), stderr);
-    exit(1);
+  if ((fp = fopen(parfile, "r"))) {
+    readpars(fp, CONFIG_GLOBAL);
+    fclose(fp);
   }
-  readpars(fp, CONFIG_GLOBAL);
-  fclose(fp);
+
   /* Read personal parameters */
   if ((fp = fopen(pparfile, "r")) != NULL) {
     readpars(fp, CONFIG_PERSONAL);
@@ -178,14 +175,16 @@ static void mgets(WIN *w, int x, int y, char *s, int len, int maxl)
  * Read in a string, but first check to see if it's
  * allowed to do so.
  */
-static void pgets(WIN *w, int x, int y, char *s, int len, unsigned int maxl)
+static void pgets(WIN *w, int x, int y, char *s, int len, unsigned int maxl,
+                  int extend_tilde)
 {
   struct pars *p = (struct pars *)s;
   char *home = NULL;
 
   mc_wlocate(w, x, y);
   mc_wgets(w, s, len, maxl);
-  if (s[0] == '~' && (s[1] == '/' || s[1] == 0) &&
+  if (extend_tilde &&
+      s[0] == '~' && (s[1] == '/' || s[1] == 0) &&
       (home = getenv("HOME")) && strlen(s) + strlen(home) <= maxl) {
     int i = 0;
     memmove(s + strlen(home), s + 1, strlen(s));
@@ -266,7 +265,7 @@ static void dologopt(void)
         return;
       case 'A':
         pgets(w, mbslen(logfnstr) + 1, 0,
-              P_LOGFNAME, PARS_VAL_LEN, PARS_VAL_LEN);
+              P_LOGFNAME, PARS_VAL_LEN, PARS_VAL_LEN, 1);
         strcpy(logfname,P_LOGFNAME);
         break;
       case 'B':
@@ -324,21 +323,21 @@ static void dopath(void)
         mc_wclose(w, 1);
         return;
       case 'A':
-        pgets(w, mbslen (download_directory) + 1, 0, P_DOWNDIR, 64, 64);
+        pgets(w, mbslen (download_directory) + 1, 0, P_DOWNDIR, 64, 64, 1);
         init_dir('d');
         break;
       case 'B':
-        pgets(w, mbslen (upload_directory) + 1, 1, P_UPDIR, 64, 64);
+        pgets(w, mbslen (upload_directory) + 1, 1, P_UPDIR, 64, 64, 1);
         init_dir('u');
         break;
       case 'C':
-        pgets(w, mbslen (script_directory) + 1, 2, P_SCRIPTDIR, 64, 64);
+        pgets(w, mbslen (script_directory) + 1, 2, P_SCRIPTDIR, 64, 64, 1);
         break;
       case 'D':
-        pgets(w, mbslen (script_program) + 1, 3, P_SCRIPTPROG, 64, 64);
+        pgets(w, mbslen (script_program) + 1, 3, P_SCRIPTPROG, 64, 64, 1);
         break;
       case 'E':
-        pgets(w, mbslen (kermit_program) + 1, 4, P_KERMIT, 64, 64);
+        pgets(w, mbslen (kermit_program) + 1, 4, P_KERMIT, 64, 64, 1);
         break;
 #ifdef LOGFILE
       case 'F':
@@ -376,7 +375,7 @@ static void inputproto(WIN *w, int n)
   }
   mc_wlocate(w, 4, n + 1);
   mc_wgets(w, P_PNAME(n), 10, 64);
-  pgets(w, 15, n+1, P_PPROG(n), 31, 64);
+  pgets(w, 15, n+1, P_PPROG(n), 31, 64, 0);
   do {
     mc_wlocate(w, 47, n + 1);
     mc_wprintf(w, "%c", P_PNN(n));
@@ -564,16 +563,16 @@ static void doserial(void)
         mc_wclose(w, 1);
         return;
       case 'A':
-        pgets(w, mbslen (serial_device) + 1, 0, P_PORT, 64, 64);
+        pgets(w, mbslen (serial_device) + 1, 0, P_PORT, 64, 64, 1);
         break;
       case 'B':
-        pgets(w, mbslen (lockfile_location) + 1, 1, P_LOCK, 64, 64);
+        pgets(w, mbslen (lockfile_location) + 1, 1, P_LOCK, 64, 64, 1);
         break;
       case 'C':
-        pgets(w, mbslen (callin_program) + 1, 2, P_CALLIN, 64, 64);
+        pgets(w, mbslen (callin_program) + 1, 2, P_CALLIN, 64, 64, 1);
         break;
       case 'D':
-        pgets(w, mbslen (callout_program) + 1, 3, P_CALLOUT, 64, 64);
+        pgets(w, mbslen (callout_program) + 1, 3, P_CALLOUT, 64, 64, 1);
         break;
       case 'E':
         get_bbp(P_BAUDRATE, P_BITS, P_PARITY, P_STOPB, 0);
@@ -624,27 +623,33 @@ static void domodem(void)
   WIN *w;
   char *str;
   int c, x, y, ypos, maxl, string_size;
-  char *init_string         = _(" A - Init string .........");
-  char *reset_string        = _(" B - Reset string ........");
-  char *dialing_prefix_1    = _(" C - Dialing prefix #1....");
-  char *dialing_suffix_1    = _(" D - Dialing suffix #1....");
-  char *dialing_prefix_2    = _(" E - Dialing prefix #2....");
-  char *dialing_suffix_2    = _(" F - Dialing suffix #2....");
-  char *dialing_prefix_3    = _(" G - Dialing prefix #3....");
-  char *dialing_suffix_3    = _(" H - Dialing suffix #3....");
-  char *connect_string      = _(" I - Connect string ......");
-  char *no_connect_strings  = _(" J - No connect strings ..");
-  char *hangup_string       = _(" K - Hang-up string ......");
-  char *dial_cancel_string  = _(" L - Dial cancel string ..");
-  char *dial_time           = _(" M - Dial time ...........");
-  char *delay_before_redial = _(" N - Delay before redial .");
-  char *number_of_tries     = _(" O - Number of tries .....");
-  char *dtr_drop_time       = _(" P - DTR drop time (0=no).");
-  char *auto_bps_detect     = _(" Q - Auto bps detect .....");
-  char *modem_has_dcd_line  = _(" R - Modem has DCD line ..");
-  char *shown_speed         = _(" S - Status line shows ...");
-  char *multi_node          = _(" T - Multi-line untag ....");
-  char *question            = _("Change which setting?");
+  const char *init_string         = _(" A - Init string .........");
+  const char *reset_string        = _(" B - Reset string ........");
+  const char *dialing_prefix_1    = _(" C - Dialing prefix #1....");
+  const char *dialing_suffix_1    = _(" D - Dialing suffix #1....");
+  const char *dialing_prefix_2    = _(" E - Dialing prefix #2....");
+  const char *dialing_suffix_2    = _(" F - Dialing suffix #2....");
+  const char *dialing_prefix_3    = _(" G - Dialing prefix #3....");
+  const char *dialing_suffix_3    = _(" H - Dialing suffix #3....");
+  const char *connect_string      = _(" I - Connect string ......");
+  const char *no_connect_strings  = _(" J - No connect strings ..");
+  const char *hangup_string       = _(" K - Hang-up string ......");
+  const char *dial_cancel_string  = _(" L - Dial cancel string ..");
+  const char *dial_time           = _(" M - Dial time ...........");
+  const char *delay_before_redial = _(" N - Delay before redial .");
+  const char *number_of_tries     = _(" O - Number of tries .....");
+  const char *dtr_drop_time       = _(" P - DTR drop time (0=no).");
+  const char *auto_bps_detect     = _(" Q - Auto bps detect .....");
+  const char *modem_has_dcd_line  = _(" R - Modem has DCD line ..");
+  const char *shown_speed         = _(" S - Status line shows ...");
+  const char *multi_node          = _(" T - Multi-line untag ....");
+  const char *question            = _("Change which setting?");
+
+  const char *defaults[] =
+    {
+      "~^M~AT S7=45 S0=0 L1 V1 X4 &c1 E1 Q0^M",
+      "^M~ATZ^M~",
+    };
 
   w = mc_wopen(2, 2, 77, 22, BDOUBLE, stdattr, mfcolor, mbcolor, 0, 0, 1);
 
@@ -682,7 +687,7 @@ static void domodem(void)
   mc_wlocate(w, 1, 20);
   mc_wprintf(w, "%s ", question);
   x = w->curx; y = w->cury;
-  mc_wprintf(w, _("      (Return or Esc to exit)"));
+  mc_wprintf(w, _("    Return or Esc to exit. Edit A+B to get defaults."));
   mc_wredraw(w, 1);
 
   while (1) {
@@ -743,17 +748,35 @@ static void domodem(void)
         if (string_size == 0)
           string_size = mbslen(connect_string);
 
-        /* Calculate adress of string tomodify */
-        str = P_MINIT + (c - 'A') * sizeof(struct pars);
-        pgets(w, string_size + 1, ypos + (c - 'A'), str, maxl, maxl);
+	{
+	  int loc = c - 'A';
+
+	  /* Calculate adress of string to modify */
+	  str = P_MINIT + loc * sizeof(struct pars);
+
+	  /* Nowadays (2011), the modem init and reset strings are seldomly
+	   * used, so we initialize those values to an empty string and
+	   * offer the default value when trying to set those strings from
+	   * an empty value */
+	  if ((loc == 0 || loc == 1) && !*str)
+	    {
+	      strncpy(str, defaults[loc], PARS_VAL_LEN);
+	      str[PARS_VAL_LEN - 1] = 0;
+
+              mc_wlocate(w, string_size + 1, 1 + loc);
+              mc_wprintf(w, "%.48s\n", str);
+	    }
+
+	  pgets(w, string_size + 1, ypos + loc, str, maxl, maxl, 0);
+	}
         break;
       case 'J':
         string_size = mbslen (no_connect_strings);
         /* Walk through all four */
-        pgets(w, string_size + 1, 10, P_MNOCON1, 20, 64);
-        pgets(w, string_size + 1 + 22, 10, P_MNOCON2, 20, 64);
-        pgets(w, string_size + 1 , 11, P_MNOCON3, 20, 64);
-        pgets(w, string_size + 1 + 22, 11, P_MNOCON4, 20, 64);
+        pgets(w, string_size + 1, 10, P_MNOCON1, 20, 64, 0);
+        pgets(w, string_size + 1 + 22, 10, P_MNOCON2, 20, 64, 0);
+        pgets(w, string_size + 1 , 11, P_MNOCON3, 20, 64, 0);
+        pgets(w, string_size + 1 + 22, 11, P_MNOCON4, 20, 64, 0);
         break;
       case 'Q':
         psets(P_MAUTOBAUD, yesno(P_MAUTOBAUD[0] == 'N'));
@@ -817,7 +840,7 @@ static void doscrkeyb(void)
   char *macros_enabled        = _(" N - Macros enabled         :");
   char *character_conversion  = _(" O - Character conversion   :");
   char *add_linefeed          = _(" P - Add linefeed           :");
-  char *local_echo            = _(" Q - Local echo             :");
+  char *local_echo_str        = _(" Q - Local echo             :");
   char *question              = _("Change which setting?  (Esc to exit)");
 
   w = mc_wopen(15, miny, 69, maxy, BDOUBLE, stdattr, mfcolor, mbcolor, 0, 0, 1);
@@ -846,7 +869,7 @@ static void doscrkeyb(void)
   mc_wprintf(w, "%s %s\n", character_conversion, P_CONVF);
 
   mc_wprintf(w, "%s %s\n", add_linefeed, _(P_ADDLINEFEED));
-  mc_wprintf(w, "%s %s\n", local_echo, _(P_LOCALECHO));
+  mc_wprintf(w, "%s %s\n", local_echo_str, _(P_LOCALECHO));
 
   mc_wredraw(w, 1);
 
@@ -1060,7 +1083,7 @@ static void doscrkeyb(void)
         break;
       case 'K': /* MARK updated 02/17/95 - Config history size */
         pgets(w, mbslen (history_buffer_size) + 1, 11,
-              P_HISTSIZE, 6, 6);
+              P_HISTSIZE, 6, 6, 0);
 
         /* In case gibberish or a value was out of bounds, */
         /* limit history buffer size between 0 to 5000 lines */
@@ -1075,7 +1098,7 @@ static void doscrkeyb(void)
         mc_wprintf(w, "%s     ", P_HISTSIZE);
         break;
       case 'L': /* fmg - get local macros storage file */
-        pgets(w, mbslen (macros_file) + 1, 12, P_MACROS, 64, 64);
+        pgets(w, mbslen (macros_file) + 1, 12, P_MACROS, 64, 64, 1);
 
         /* Try to open the file to read it in. */
         fp = fopen(pfix_home(P_MACROS), "r+");
@@ -1118,7 +1141,7 @@ static void doscrkeyb(void)
         break;
       case 'Q':
         psets(P_LOCALECHO, yesno(P_LOCALECHO[0] == 'N'));
-        mc_wlocate(w, mbslen (local_echo) + 1, 17);
+        mc_wlocate(w, mbslen (local_echo_str) + 1, 17);
         mc_wprintf(w, "%s", _(P_LOCALECHO));
         break;
      }
@@ -1137,11 +1160,12 @@ int dotermmenu(void)
   int new_term = -1;
   int old_stat = P_STATLINE[0];
   char buf[8];
-  char *terminal_emulation  = _(" A - Terminal emulation  :");
-  char *backspace_key_sends = _(" B - Backspace key sends :");
-  char *status_line         = _(" C -      Status line is :");
-  char *msg_nl_delay        = _(" D -  Newline delay (ms) :");
-  char *msg_answerback      = _(" E -      ENQ answerback :");
+  char *terminal_emulation  = _(" A -      Terminal emulation :");
+  char *backspace_key_sends = _(" B -     Backspace key sends :");
+  char *status_line         = _(" C -          Status line is :");
+  char *msg_nl_delay        = _(" D -   Newline tx delay (ms) :");
+  char *msg_answerback      = _(" E -          ENQ answerback :");
+  char *msg_ch_delay        = _(" F - Character tx delay (ms) :");
   char *question            = _("Change which setting?");
 
   w = mc_wopen(15, 7, 64, 15, BDOUBLE, stdattr, mfcolor, mbcolor, 0, 0, 1);
@@ -1152,6 +1176,7 @@ int dotermmenu(void)
   mc_wprintf(w, "%s %s\n", status_line, _(P_STATLINE));
   mc_wprintf(w, "%s %d\n", msg_nl_delay, vt_nl_delay);
   mc_wprintf(w, "%s %s\n", msg_answerback, P_ANSWERBACK);
+  mc_wprintf(w, "%s %d\n", msg_ch_delay, vt_ch_delay);
   mc_wlocate(w, 4, 7);
   mc_wputs(w, question);
 
@@ -1207,14 +1232,22 @@ int dotermmenu(void)
         break;
       case 'D':
         sprintf(buf, "%d", vt_nl_delay);
-        mc_wlocate(w, mbslen(msg_nl_delay) +1, 4);
+        mc_wlocate(w, mbslen(msg_nl_delay) + 1, 4);
         mc_wgets(w, buf, 5, 5);
         vt_nl_delay = atoi(buf);
-        mc_wlocate(w, mbslen(msg_nl_delay) +1, 4);
+        mc_wlocate(w, mbslen(msg_nl_delay) + 1, 4);
         mc_wprintf(w, "%-4d", vt_nl_delay);
         break;
       case 'E':
-        pgets(w, strlen(msg_answerback) + 1, 5, P_ANSWERBACK, 50, 50);
+        pgets(w, strlen(msg_answerback) + 1, 5, P_ANSWERBACK, 50, 50, 0);
+        break;
+      case 'F':
+        sprintf(buf, "%d", vt_ch_delay);
+        mc_wlocate(w, mbslen(msg_ch_delay) + 1, 6);
+        mc_wgets(w, buf, 5, 5);
+        vt_ch_delay = atoi(buf);
+        mc_wlocate(w, mbslen(msg_ch_delay) + 1, 6);
+        mc_wprintf(w, "%-4d", vt_ch_delay);
         break;
       default:
         break;
@@ -1245,6 +1278,8 @@ int dodflsave(void)
   }
   writepars(fp, dosetup);
   fclose(fp);
+  if (dosetup)
+    chmod(fname, (mode_t) 0644);
   werror(_("Configuration saved"));
 
   return domacsave() < 0 ? -1 : 0;
@@ -1567,9 +1602,9 @@ void domacros(void)
     mc_wlocate(w, 1, 15);
     mc_wputs(w, _("  \\u = username, \\p = password, \\\\ = \\, \\e = toggle echo, "));
     mc_wlocate(w, 1, 16);
-    mc_wputs(w, _("  \\l = toggle LF, \\bX1..Xn<sp> = change baud rate. Example: \"\\bfq \""));
+    mc_wputs(w, _("  \\l = toggle LF, \\bX1..Xn<sp> = change baud rate. Example: \"\\beq \""));
     mc_wlocate(w, 1, 17);
-    mc_wputs(w, _("  = 19200 8N1. (See the \"Comm Parameters\" menu for valid values of X.))"));
+    mc_wputs(w, _("  = 115200 8N1. (See the \"Comm Parameters\" menu for valid values of X.))"));
     if (clr) {
       mc_wlocate(w, 1, 12);
       mc_wprintf(w, "%s ", question);
@@ -1719,7 +1754,7 @@ void doconv(void)
         strcpy(buf,P_CONVF);
         prompt=_("Load file: %s");
         mc_wprintf(w, prompt, buf);
-        pgets(w, mbslen(prompt) - 1, ymax - 1, P_CONVF, 64, 64);
+        pgets(w, mbslen(prompt) - 1, ymax - 1, P_CONVF, 64, 64, 1);
         if (loadconv(P_CONVF) == 0) {
           if (strcmp(P_CONVF,buf))
             markch(P_CONVF);
@@ -1731,7 +1766,7 @@ void doconv(void)
         strcpy(buf,P_CONVF);
         prompt=_("Save as file: %s");
         mc_wprintf(w, prompt, buf);
-        pgets(w, mbslen(prompt) - 1, ymax - 1, P_CONVF, 64, 64);
+        pgets(w, mbslen(prompt) - 1, ymax - 1, P_CONVF, 64, 64, 1);
         if (saveconv(P_CONVF) == 0) {
           if (strcmp(P_CONVF,buf))
             markch(P_CONVF);
@@ -1741,7 +1776,7 @@ void doconv(void)
         break;
       case 'C':
         prompt = _("Character to be edited: ");
-        mc_wprintf(w, prompt);
+        mc_wprintf(w, "%s", prompt);
         buf[0] = 0;
         i = -1;
         mc_wlocate(w, mbslen(prompt), ymax - 1);

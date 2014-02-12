@@ -41,19 +41,14 @@
 static int nrents = 1;
 
 static void file_tell(const char *s);
-/*
- * replaced by macro (on test basis)
-static GETSDIR_ENTRY *getno(int no, GETSDIR_ENTRY *dirdat);
- */
 static void dhili(int k);
 static void prdir(WIN *dirw, int top, int cur, GETSDIR_ENTRY *dirdat, int longest);
 static void prone(WIN *dirw, GETSDIR_ENTRY *dirdat, int longest, int inverse);
 static void *set_work_dir(void *existing, size_t min_len);
-static int  new_filedir(GETSDIR_ENTRY *o_dirdat, int flushit);
+static int  new_filedir(GETSDIR_ENTRY *dirdat, int flushit);
 static void goto_filedir(char *new_dir, int absolut);
 static int  tag_untag(char *pat, int tag);
 static char *concat_list(GETSDIR_ENTRY *d);
-static int  init_filedir(void);
 
 static WIN *dsub;
 static const char *const what[] =
@@ -67,7 +62,7 @@ static const char *const what[] =
 #define WHAT_NR_OPTIONS (sizeof (what) / sizeof (*what))
 #define WHAT_WIDTH 8 /* Width of one entry */
 /* Number of bytes for <= 7 characters */
-static size_t what_lens[WHAT_NR_OPTIONS];
+static int what_lens[WHAT_NR_OPTIONS];
 /* Number of ' ' padding entries at left and right, left is >= 1 */
 static int what_padding[WHAT_NR_OPTIONS][2];
 static int dprev;
@@ -127,23 +122,12 @@ static void dhili(int k)
     horiz_draw(k, XA_REVERSE | stdattr, stdattr);
 }
 
-/*
- */
-#define getno(n,d) ((n) >= nrents? (GETSDIR_ENTRY *) NULL : &((d)[n]))
-
-/*
- * Get entry "no" in list.
-static GETSDIR_ENTRY *
-getno(no, dirdat)
-int no;
-GETSDIR_ENTRY *dirdat;
+static inline GETSDIR_ENTRY *getno(int no, GETSDIR_ENTRY *d)
 {
   if (no >= nrents)
-    return (GETSDIR_ENTRY *) NULL;
-
-  return &dirdat[no];
+    return NULL;
+  return d + no;
 }
- */
 
 /*
  * Print the directory. Only draw from "cur" to bottom.
@@ -152,7 +136,6 @@ static void prdir(WIN *dirw, int top, int cur,
                   GETSDIR_ENTRY *dirdat, int longest)
 {
   int f, start;
-  GETSDIR_ENTRY *d;
   char f_str[BUFSIZ];
   char t_str[BUFSIZ];
 
@@ -161,7 +144,8 @@ static void prdir(WIN *dirw, int top, int cur,
   sprintf(f_str, " %%-%ds", longest + 2);
   mc_wlocate(dirw, 0, start + FILE_MWTR);
   for (f = start; f < dirw->ys - (1 + FILE_MWTR); f++) {
-    if ((d = getno(f + top, dirdat)) == (GETSDIR_ENTRY *)NULL)
+    GETSDIR_ENTRY *d;
+    if (!(d = getno(f + top, dirdat)))
       break;
     if (d->cflags & FL_TAG)
       mc_wsetattr(dirw, XA_REVERSE | stdattr);
@@ -204,7 +188,7 @@ static void prone(WIN *dirw, GETSDIR_ENTRY *dirdat, int longest, int inverse)
 }
 
 static WIN *main_w;
-static GETSDIR_ENTRY *dirdat, *d;
+static GETSDIR_ENTRY *global_dirdat;
 static int cur = 0;
 static int ocur = 0;
 static int subm = SUBM_OKAY;
@@ -236,15 +220,15 @@ static char *ret_buf = NULL;
 void init_dir(char dir)
 {
   char *p = NULL;
-  
+
   switch (dir) {
   case 'u':
     p = u_work_dir;
-    u_work_dir = (char *)NULL;
+    u_work_dir = NULL;
     break;
   case 'd':
     p = d_work_dir;
-    d_work_dir = (char *)NULL;
+    d_work_dir = NULL;
     break;
   }
   free((void *) p);
@@ -253,10 +237,7 @@ void init_dir(char dir)
 
 static void *set_work_dir(void *existing, size_t min_len)
 {
-  void *vp;
-
-  vp = existing == NULL
-       ? malloc(min_len) : realloc(existing, min_len);
+  void *vp = realloc(existing, min_len);
 
   if (down_loading)
     d_work_dir = vp;
@@ -272,7 +253,7 @@ static void *set_work_dir(void *existing, size_t min_len)
  *
  * Sets the current working directory.  Non-0 return = no change.
  */
-static int new_filedir(GETSDIR_ENTRY *o_dirdat, int flushit)
+static int new_filedir(GETSDIR_ENTRY *dirdat, int flushit)
 {
   static size_t dp_len = 0;
   static char cwd_str_fmt[BUFSIZ] = "";
@@ -281,6 +262,7 @@ static int new_filedir(GETSDIR_ENTRY *o_dirdat, int flushit)
   int initial_y = (76 - (WHAT_NR_OPTIONS * WHAT_WIDTH >= 76
                    ? 74 : WHAT_NR_OPTIONS * WHAT_WIDTH)) / 2;
   size_t i;
+  char * new_prev_dir;
 
   cur      =  0;
   ocur     =  0;
@@ -293,11 +275,6 @@ static int new_filedir(GETSDIR_ENTRY *o_dirdat, int flushit)
   min_len  =  1;
   dprev    = -1;
   tag_cnt  =  0;
-
-  /* got to do some error-checking here!!!  Maybe use mcd(), too! */
-  if (prev_dir != NULL)
-    free(prev_dir);
-  prev_dir = getcwd(NULL, BUFSIZ);
 
   /*
    * get last directory
@@ -328,7 +305,28 @@ static int new_filedir(GETSDIR_ENTRY *o_dirdat, int flushit)
   if (strlen(work_dir) > 1 && work_dir[strlen(work_dir) - 1] == '/')
     work_dir[strlen(work_dir) - 1] = (char)0;
 
-  chdir(work_dir);
+  /* get the current working directory, which will become the prev_dir, on success */
+  new_prev_dir = getcwd(NULL, BUFSIZ);
+  if (!new_prev_dir)
+    return -1;
+
+  if (!access(work_dir, R_OK | X_OK) && !chdir(work_dir)) {
+    /* was able to change to new working directory */
+    free(prev_dir);
+    prev_dir = new_prev_dir;
+  }
+  else {
+    /* Could not change to the new working directory */
+    mc_wbell();
+    werror(
+        _("Could not change to directory %s (%s)"), 
+        work_dir,
+        strerror(errno));
+
+    /* restore the previous working directory */
+    free(work_dir);
+    work_dir = set_work_dir(new_prev_dir, strlen(new_prev_dir));
+  }
 
   /* All right, draw the file directory! */
 
@@ -409,8 +407,8 @@ static int new_filedir(GETSDIR_ENTRY *o_dirdat, int flushit)
   main_w->doscroll = 0;
 
   /* old dir to discard? */
-  if (o_dirdat != (GETSDIR_ENTRY *) NULL)
-    free(o_dirdat);
+  free(dirdat);
+  dirdat = NULL;
 
   /* get sorted directory */
   if ((nrents = getsdir(".", wc_str,
@@ -420,10 +418,13 @@ static int new_filedir(GETSDIR_ENTRY *o_dirdat, int flushit)
     mc_wclose(main_w, 1);
     mc_wclose(dsub, 1);
     free(dirdat);
+    dirdat = NULL;
     return -1;
   }
 
-  prdir(main_w, top, top, dirdat, longest);  
+  global_dirdat = dirdat; // Hmm...
+
+  prdir(main_w, top, top, dirdat, longest);
   mc_wlocate(main_w, initial_y, main_w->ys - FILE_MWTR);
   mc_wputs(main_w, _("( Escape to exit, Space to tag )"));
   dhili(subm);
@@ -477,7 +478,7 @@ static void goto_filedir(char *new_dir, int absolut)
     else
       snprintf(work_dir, min_len, "%s/%s", homedir, new_dir);
   }
-  new_filedir(dirdat, 1);
+  new_filedir(global_dirdat, 1);
 }
 
 
@@ -499,7 +500,7 @@ static int init_filedir(void)
 
   if (ret_buf != NULL ||
       (retstat = ((ret_buf = (char *)malloc(BUFSIZ)) == NULL)? -1 : 0) == 0) {
-    retstat = new_filedir((GETSDIR_ENTRY *) NULL, 0);
+    retstat = new_filedir(NULL, 0);
     dirflush = 1;
     mc_wredraw(dsub, 1);
   }
@@ -509,16 +510,19 @@ static int init_filedir(void)
 
 static int tag_untag(char *pat, int tag)
 {
-  GETSDIR_ENTRY *my_d = dirdat;
+  GETSDIR_ENTRY *d = global_dirdat;
   int indxr, cntr;
 
-  for (indxr = nrents, cntr = 0; indxr; --indxr, ++my_d)
-    if (S_ISREG(my_d->mode) && wildmat(my_d->fname, pat)) {
+  if (nrents < 1)
+    return 0;
+
+  for (indxr = nrents, cntr = 0; indxr; --indxr, ++d)
+    if (S_ISREG(d->mode) && wildmat(d->fname, pat)) {
       if (tag) {
-        my_d->cflags |= FL_TAG;
+        d->cflags |= FL_TAG;
         ++cntr;
-      } else if (my_d->cflags & FL_TAG) {
-        my_d->cflags &= ~FL_TAG;
+      } else if (d->cflags & FL_TAG) {
+        d->cflags &= ~FL_TAG;
         ++cntr;
       }
     }
@@ -530,15 +534,17 @@ static int tag_untag(char *pat, int tag)
 /*
  * concatenate tagged files into a buffer
  */
-static char *concat_list(GETSDIR_ENTRY *d)
+static char *concat_list(GETSDIR_ENTRY *dirdat)
 {
-  GETSDIR_ENTRY *my_d;
+  GETSDIR_ENTRY *d;
   int indxr, len;
+  int i;
+  char *j;
 
-  my_d = d;
-  for (indxr = nrents, len = 0; indxr; --indxr, ++my_d)
-    if (my_d->cflags & FL_TAG)
-      len += strlen(my_d->fname) + 1;
+  d = dirdat;
+  for (indxr = nrents, len = 0; indxr; --indxr, ++d)
+    if (d->cflags & FL_TAG)
+      len += strlen(d->fname) + 1;
 
   if (len) {
     if (len > BUFSIZ) {
@@ -549,12 +555,22 @@ static char *concat_list(GETSDIR_ENTRY *d)
     }
 
     *ret_buf = (char)0;
-    my_d = d;
-    for (indxr = nrents; indxr; --indxr, ++my_d)
-      if (my_d->cflags & FL_TAG) {
+    d = dirdat;
+    for (indxr = nrents; indxr; --indxr, ++d)
+      if (d->cflags & FL_TAG) {
         /* this could be *much* more efficient */
-        strcat(ret_buf, my_d->fname);
-        strcat(ret_buf, " ");
+        for (i = strlen(ret_buf), j = d->fname; *j; j++) {
+          if (*j == ' ') {
+            if ((ret_buf = (char*)realloc(ret_buf, ++len)) == NULL) {
+              file_tell(_("Too many files tagged - buffer would overflow"));
+              return(NULL);
+            }
+            ret_buf[i++] = '\\';
+          }
+          ret_buf[i++] = *j;
+        }
+        ret_buf[i++] = ' ';
+        ret_buf[i]   = '\0';
       }
 
     ret_buf[strlen(ret_buf) - 1] = (char)0;
@@ -593,7 +609,7 @@ again:
     first = 0;
   }
   while (!quit) {
-    d = getno(cur, dirdat);
+    GETSDIR_ENTRY *d = getno(cur, global_dirdat);
     /*
        if(S_ISDIR(d->mode))
        prone(main_w, d, longest, 0);	
@@ -639,7 +655,7 @@ again:
         if (S_ISDIR(d->mode)) {
           time_t this_time = time((time_t *)NULL);
           if (this_time - click_time < 2) {
-            GETSDIR_ENTRY *d2 = getno(cur, dirdat);
+            GETSDIR_ENTRY *d2 = getno(cur, global_dirdat);
             goto_filedir(d2->fname, 0);
             click_time = (time_t)0;
           } else
@@ -688,11 +704,11 @@ again:
 
     if (cur < top) {
       top--;
-      prdir(main_w, top, top, dirdat, longest);
+      prdir(main_w, top, top, global_dirdat, longest);
     }
     if (cur - top > main_w->ys - (2 + FILE_MWTR)) {
       top++;
-      prdir(main_w, top, top, dirdat, longest);
+      prdir(main_w, top, top, global_dirdat, longest);
     }
     /*
      if(cur != ocur)
@@ -710,7 +726,8 @@ again:
   if (c == '\033') {
     mc_wclose(main_w, 1);
     mc_wclose(dsub, 1);
-    free(dirdat);
+    free(global_dirdat);
+    global_dirdat = NULL;
     return NULL;
   }
   /* Page up or down ? */
@@ -722,7 +739,7 @@ again:
     cur = top;
     pgud = 0;
     if (ocur != top)
-      prdir(main_w, top, cur, dirdat, longest);
+      prdir(main_w, top, cur, global_dirdat, longest);
     ocur = cur;
     goto again;
   }
@@ -738,7 +755,7 @@ again:
       cur = nrents - 1;
     pgud = 0;
     if (ocur != top)
-      prdir(main_w, top, cur, dirdat, longest);
+      prdir(main_w, top, cur, global_dirdat, longest);
     ocur = cur;
     goto again;
   }
@@ -769,7 +786,7 @@ again:
           if (s == NULL || *s == (char) 0)
             break;
           strcpy(wc_str, wc_mem);
-          new_filedir(dirdat, 1);
+          new_filedir(global_dirdat, 1);
           wc_str[0] = (char)0;
         }
         break;
@@ -790,7 +807,7 @@ again:
               goto tag_end;
             }
             tag_cnt += newly_tagged;
-            prdir(main_w, top, top, dirdat, longest);  
+            prdir(main_w, top, top, global_dirdat, longest);  
           }
         }
 tag_end:
@@ -811,7 +828,7 @@ tag_end:
             goto untag_end;
           }
           tag_cnt -= untagged;
-          prdir(main_w, top, top, dirdat, longest);  
+          prdir(main_w, top, top, global_dirdat, longest);  
         }
 untag_end:
         break;
@@ -862,13 +879,14 @@ untag_end:
               /* current working directory */
               ret_ptr = work_dir;
             } else {
-              ret_ptr = concat_list(dirdat);
+              ret_ptr = concat_list(global_dirdat);
             }
           }
 
           mc_wclose(main_w, 1);
           mc_wclose(dsub, 1);
-          free(dirdat);
+          free(global_dirdat);
+	  global_dirdat = NULL;
           return ret_ptr;
         }
         break;

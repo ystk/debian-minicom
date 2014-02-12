@@ -21,17 +21,17 @@
  *
  * // jl 04.09.97 character map conversions in and out
  *    jl 06.07.98 use conversion tables with the capture file
+ *    mark.einon@gmail.com 16/02/11 - Added option to timestamp terminal output
  */
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
 
+#include <time.h>
 #include "port.h"
 #include "minicom.h"
 #include "vt100.h"
 #include "config.h"
-
-#define OLD 0
 
 /*
  * The global variable esc_s holds the escape sequence status:
@@ -129,41 +129,39 @@ static char * vt_map[] = {
   "\376\244\225\242\223\376\224\366\376\227\243\226\201\376\376\230"
 };
 static char *vt_trans[2];
-static int vt_charset = 0;	/* Character set. */
+static int vt_charset;          /* Character set. */
 #endif
 
 static int vt_echo;		/* Local echo on/off. */
 int vt_nl_delay;		/* Delay after CR key */
-static int vt_type   = ANSI;	/* Terminal type. */
-static int vt_wrap   = 0;	/* Line wrap on/off */
-static int vt_addlf  = 0;	/* Add linefeed on/off */
+int vt_ch_delay;		/* Delay between characters */
+static int vt_type = ANSI;	/* Terminal type. */
+static int vt_wrap;             /* Line wrap on/off */
+static int vt_addlf;            /* Add linefeed on/off */
 static int vt_fg;		/* Standard foreground color. */
 static int vt_bg;		/* Standard background color. */
 static int vt_keypad;		/* Keypad mode. */
 static int vt_cursor;		/* cursor key mode. */
-static int vt_asis = 0;		/* 8bit clean mode. */
+static int vt_asis;		/* 8bit clean mode. */
+static int vt_line_timestamp;	/* Timestamp each line. */
 static int vt_bs = 8;		/* Code that backspace key sends. */
-static int vt_insert = 0;	/* Insert mode */
-static int vt_crlf = 0;		/* Return sends CR/LF */
+static int vt_insert;           /* Insert mode */
+static int vt_crlf;		/* Return sends CR/LF */
 static int vt_om;		/* Origin mode. */
-WIN *vt_win          = NULL;	/* Output window. */
+WIN *vt_win;                    /* Output window. */
 static int vt_docap;		/* Capture on/off. */
 static void (*vt_keyb)(int, int);/* Gets called for NORMAL/APPL switch. */
 static void (*termout)(const char *, int);/* Gets called to output a string. */
 
 static int escparms[8];		/* Cumulated escape sequence. */
-#if OLD
-static int ptr = -2;		/* Index into escparms array. */
-#else
-static int ptr = 0;		/* Index into escparms array. */
-#endif
+static int ptr;                 /* Index into escparms array. */
 static long vt_tabs[5];		/* Tab stops for max. 32*5 = 160 columns. */
 
-short newy1 = 0;		/* Current size of scrolling region. */
-short newy2 = 23;
+static short newy1 = 0;		/* Current size of scrolling region. */
+static short newy2 = 23;
 
 /* Saved color and posistions */
-static short savex = 0, savey = 0, saveattr = XA_NORMAL, savecol = 112;
+static short savex, savey, saveattr = XA_NORMAL, savecol = 112;
 
 #if TRANSLATE
 static short savecharset;
@@ -219,7 +217,7 @@ void vt_init(int type, int fg, int bg, int wrap, int add)
   mc_wresetregion(vt_win);
   vt_keypad = NORMAL;
   vt_cursor = NORMAL;
-  vt_echo = 0;
+  vt_echo = local_echo;
   vt_tabs[0] = 0x01010100;
   vt_tabs[1] =
   vt_tabs[2] =
@@ -230,12 +228,8 @@ void vt_init(int type, int fg, int bg, int wrap, int add)
   vt_trans[0] = savetrans[0] = vt_map[0];
   vt_trans[1] = savetrans[1] = vt_map[1];
 #endif
-#if OLD
-  ptr = -2;
-#else
   ptr = 0;
   memset(escparms, 0, sizeof(escparms));
-#endif
   esc_s = 0;
 
   if (vt_keyb)
@@ -246,7 +240,7 @@ void vt_init(int type, int fg, int bg, int wrap, int add)
 
 /* Change some things on the fly. */
 void vt_set(int addlf, int wrap, int docap, int bscode,
-            int echo, int cursor, int asis)
+            int echo, int cursor, int asis, int timestamp)
 {
   if (addlf >= 0)
     vt_addlf = addlf;
@@ -262,6 +256,8 @@ void vt_set(int addlf, int wrap, int docap, int bscode,
     vt_cursor = cursor;
   if (asis >=0)
     vt_asis = asis;
+  if (timestamp >= 0)
+    vt_line_timestamp = timestamp;
 }
 
 /* Output a string to the modem. */
@@ -421,36 +417,21 @@ static void state2(int c)
 
   /* See if a number follows */
   if (c >= '0' && c <= '9') {
-#if OLD
-    if (ptr < 0)
-      ptr = 0;
-#endif
     escparms[ptr] = 10*escparms[ptr] + c - '0';
     return;
   }
   /* Separation between numbers ? */
   if (c == ';') {
-#if OLD
-    if (ptr < 0)
-      ptr = 0; /* keithr@primenet.com */
-    if (ptr >= 0 && ptr < 15)
-      ptr++;
-#else
     if (ptr < 15)
       ptr++;
-#endif
     return;
   }
   /* ESC [ ? sequence */
-#if OLD
-  if (ptr < 0 && c == '?')
-#else
   if (escparms[0] == 0 && ptr == 0 && c == '?')
-#endif
-  {
-    esc_s = 3;
-    return;
-  }
+    {
+      esc_s = 3;
+      return;
+    }
 
   /* Process functions with zero, one, two or more arguments */
   switch (c) {
@@ -480,7 +461,7 @@ static void state2(int c)
           y = 0;
         if (y <= newy1 - 1)
           y = newy1;
-      }	
+      }
       mc_wlocate(vt_win, x, y);
       break;
     case 'X': /* Character erasing (ECH) */
@@ -565,7 +546,6 @@ static void state2(int c)
       vt_trans[0] = savetrans[0];
       vt_trans[1] = savetrans[1];
 #endif
-      break;
       vt_win->color = savecol; /* HACK should use mc_wsetfgcol etc */
       mc_wsetattr(vt_win, saveattr);
       mc_wlocate(vt_win, savex, savey);
@@ -598,11 +578,6 @@ static void state2(int c)
           vt_tabs[x] = 0;
       break;
     case 'm': /* Set attributes */
-#if OLD
-      /* Without argument, esc-parms[0] is 0 */
-      if (ptr < 0)
-        ptr = 0;
-#endif
       attr = mc_wgetattr((vt_win));
       for (f = 0; f <= ptr; f++) {
         if (escparms[f] >= 30 && escparms[f] <= 37)
@@ -615,17 +590,17 @@ static void state2(int c)
             mc_wsetfgcol(vt_win, vt_fg);
             mc_wsetbgcol(vt_win, vt_bg);
             break;
-          case 4:
-            attr |= XA_UNDERLINE;
-            break;
-          case 7:
-            attr |= XA_REVERSE;
-            break;
           case 1:
             attr |= XA_BOLD;
             break;
+          case 4:
+            attr |= XA_UNDERLINE;
+            break;
           case 5:
             attr |= XA_BLINK;
+            break;
+          case 7:
+            attr |= XA_REVERSE;
             break;
           case 22: /* Bold off */
             attr &= ~XA_BOLD;
@@ -702,12 +677,8 @@ static void state2(int c)
   }
   /* Ok, our escape sequence is all done */
   esc_s = 0;
-#if OLD
-  ptr = -2;
-#else
   ptr = 0;
   memset(escparms, 0, sizeof(escparms));
-#endif
   return;
 }
 
@@ -750,20 +721,9 @@ static void state3(int c)
 {
   /* See if a number follows */
   if (c >= '0' && c <= '9') {
-#if OLD
-    if (ptr < 0)
-      ptr = 0;
-#endif
     escparms[ptr] = 10*escparms[ptr] + c - '0';
     return;
   }
-#if OLD
-  /* ESC [ ? number seen */
-  if (ptr < 0) {
-    esc_s = 0;
-    return;
-  }
-#endif
   switch (c) {
     case 'h':
       dec_mode(1);
@@ -778,12 +738,8 @@ static void state3(int c)
       break;
   }
   esc_s = 0;
-#if OLD
-  ptr = -2;
-#else
   ptr = 0;
   memset(escparms, 0, sizeof(escparms));
-#endif
   return;
 }
 
@@ -910,8 +866,23 @@ static void state7(int c)
   buf[pos++] = c;
 }
 
+static void output_s(const char *s)
+{
+  mc_wputs(vt_win, s);
+  if (vt_docap == 1)
+    fputs(s, capfp);
+}
+
+static void output_c(const char c)
+{
+  mc_wputc(vt_win, c);
+  if (vt_docap == 1)
+    fputc(c, capfp);
+}
+
 void vt_out(int ch)
 {
+  static unsigned char last_ch;
   int f;
   unsigned char c;
   int go_on = 0;
@@ -920,15 +891,44 @@ void vt_out(int ch)
   if (!ch)
     return;
 
-#if OLD
-  if (ptr == -2) { /* Initialize */
-    ptr = -1;
-    for (f = 0; f < 8; f++)
-      escparms[f] = 0;
-  }
-#endif
+  if (last_ch == '\n'
+      && vt_line_timestamp != TIMESTAMP_LINE_OFF)
+    {
+      struct timeval tmstmp_now;
+      static time_t tmstmp_last;
+      char s[36];
+      struct tm tmstmp_tm;
+
+      gettimeofday(&tmstmp_now, NULL);
+      if ((   vt_line_timestamp == TIMESTAMP_LINE_PER_SECOND
+           && tmstmp_now.tv_sec != tmstmp_last)
+          || vt_line_timestamp == TIMESTAMP_LINE_SIMPLE
+          || vt_line_timestamp == TIMESTAMP_LINE_EXTENDED)
+        {
+          if (   localtime_r(&tmstmp_now.tv_sec, &tmstmp_tm)
+              && strftime(s, sizeof(s), "[%F %T", &tmstmp_tm))
+            {
+              output_s(s);
+              switch (vt_line_timestamp)
+                {
+                case TIMESTAMP_LINE_SIMPLE:
+                  output_s("] ");
+                  break;
+                case TIMESTAMP_LINE_EXTENDED:
+                  snprintf(s, sizeof(s), ".%03ld] ", tmstmp_now.tv_usec / 1000);
+                  output_s(s);
+                  break;
+                case TIMESTAMP_LINE_PER_SECOND:
+                  output_s("\r\n");
+                  break;
+                };
+            }
+          tmstmp_last = tmstmp_now.tv_sec;
+        }
+    }
 
   c = (unsigned char)ch;
+  last_ch = c;
 
   if (vt_docap == 2) /* Literal. */
     fputc(c, capfp);
@@ -944,11 +944,8 @@ void vt_out(int ch)
       break;
     case '\r': /* Carriage return */
       mc_wputc(vt_win, c);
-      if (vt_addlf) {
-        mc_wputc(vt_win, '\n');
-        if (vt_docap == 1)
-          fputc('\n', capfp);
-      }
+      if (vt_addlf)
+        output_c('\n');
       break;
     case '\t': /* Non - destructive TAB */
       /* Find next tab stop. */
@@ -993,9 +990,7 @@ void vt_out(int ch)
     case '\n':
     case '\b':
     case 7: /* Bell */
-      mc_wputc(vt_win, c);
-      if (vt_docap == 1)
-        fputc(c, capfp);
+      output_c(c);
       break;
     default:
       go_on = 1;
@@ -1010,10 +1005,10 @@ void vt_out(int ch)
       if (vt_docap == 1)
         fputc(P_CONVCAP[0] == 'Y' ? vt_inmap[c] : c, capfp);
       if (!using_iconv()) {
-      c = vt_inmap[c];    /* conversion 04.09.97 / jl */
+        c = vt_inmap[c];    /* conversion 04.09.97 / jl */
 #if TRANSLATE
-      if (vt_type == VT100 && vt_asis == 0)
-        c = vt_trans[vt_charset][c];
+        if (vt_type == VT100 && vt_trans[vt_charset] && vt_asis == 0)
+          c = vt_trans[vt_charset][c];
 #endif
       }
       /* FIXME: This is wrong, but making it right would require
