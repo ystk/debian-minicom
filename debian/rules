@@ -35,10 +35,15 @@ clean:
 configure-stamp: configure
 	$(testdir)
 	cp -f /usr/share/misc/config.guess /usr/share/misc/config.sub .
-	./configure $(CONFFLAGS) --prefix=/usr --mandir=/usr/share/man --sysconfdir=/etc/minicom
+	./configure $(CONFFLAGS) --prefix=/usr --mandir=/usr/share/man --sysconfdir=/etc/minicom $(shell dpkg-buildflags --export=configure)
 	touch configure-stamp
 
-build: build-stamp
+build: build-arch build-indep
+
+build-arch: build-stamp
+
+build-indep: build-stamp
+
 build-stamp: configure-stamp
 	$(testdir)
 	$(MAKE)
@@ -87,4 +92,4 @@ endif
 	dpkg-gencontrol -isp -pminicom -P$(BUILDDIR)
 	dpkg --build $(BUILDDIR) ..
 
-.PHONY: clean build install binary binary-indep binary-arch
+.PHONY: clean build build-arch build-indep install binary binary-arch binary-indep

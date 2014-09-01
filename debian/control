@@ -4,7 +4,8 @@ Priority: optional
 Maintainer: Martin A. Godisch <godisch@debian.org>
 Uploaders: Jordi Mallach <jordi@debian.org>
 Build-Depends: autotools-dev, gettext, libncurses5-dev
-Standards-Version: 3.9.1
+Standards-Version: 3.9.5
+Homepage: https://alioth.debian.org/projects/minicom/
 
 Package: minicom
 Architecture: any

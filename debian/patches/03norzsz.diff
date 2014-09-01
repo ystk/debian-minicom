@@ -1,6 +1,8 @@
---- minicom-2.2.orig/src/updown.c	2005-08-14 22:39:30.000000000 +0200
-+++ minicom-2.2/src/updown.c	2006-10-18 16:48:34.000000000 +0200
-@@ -423,6 +423,22 @@
+Index: minicom-2.6.1/src/updown.c
+===================================================================
+--- minicom-2.6.1.orig/src/updown.c	2011-09-07 23:04:32.000000000 +0200
++++ minicom-2.6.1/src/updown.c	2013-01-13 14:32:06.000000000 +0100
+@@ -426,6 +426,22 @@
    mcd("");
    timer_update();
  
@@ -8,7 +10,7 @@
 +  if (win && status == 0x0001) {
 +#if VC_MUSIC
 +	if (P_SOUND[0] == 'Y') {
-+		wprintf(win, _("\n Failure executing protocol. Press any key to continue..."));
++		mc_wprintf(win, _("\n Failure executing protocol. Press any key to continue..."));
 +		music();
 +	} else
 +		sleep(1);

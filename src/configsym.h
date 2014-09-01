@@ -35,7 +35,7 @@
  * jl  10.02.2000 parameter P_STOPB
  */
 
-#define PARS_VAL_LEN 64
+#define PARS_VAL_LEN 128
 
 struct pars {
   /* value is first, so that (char *)mpars[0] == mpars[0].value */
@@ -162,8 +162,11 @@ enum config_type {
 /* Terminal behaviour */
 #define P_LOCALECHO	mpars[87].value
 #define P_ADDLINEFEED	mpars[88].value
+#define P_LINEWRAP      mpars[89].value  /* Line wrap */
+#define P_DISPLAYHEX    mpars[90].value  /* Do output as hex */
+#define P_ADDCARRIAGERETURN mpars[91].value
 
-#define P_ANSWERBACK    mpars[89].value  /* User defined answerback string */
+#define P_ANSWERBACK    mpars[92].value  /* User defined answerback string */
 
 /* fmg - macros struct */
 

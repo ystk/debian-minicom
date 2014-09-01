@@ -47,7 +47,7 @@ const char *Version = VERSION;
 /*
  * Find out name to use for lockfile when locking tty.
  */
-static char *mbasename(char *s, char *res, int reslen)
+static char *mdevlockname(char *s, char *res, int reslen)
 {
   char *p;
 
@@ -69,6 +69,34 @@ static char *mbasename(char *s, char *res, int reslen)
   }
 
   return res;
+}
+
+static char *shortened_devpath(char *buf, int buflen, char *devpath)
+{
+  char *cutoff[] = {
+    "/dev/serial/by-id/",
+    "/dev/serial/by-path/",
+    "/dev/serial/",
+    "/dev/",
+  };
+  enum { SZ = sizeof(cutoff) / sizeof(cutoff[0]) };
+
+  for (int i = 0; i < SZ; ++i)
+    if (!strncmp(devpath, cutoff[i], strlen(cutoff[i])))
+      {
+        devpath += strlen(cutoff[i]);
+        break;
+      }
+
+  int l = strlen(devpath);
+
+  if (l > buflen - 1)
+    devpath += l - buflen + 1;
+
+  strncpy(buf, devpath, buflen);
+  buf[buflen - 1] = 0;
+
+  return buf;
 }
 
 /*
@@ -188,7 +216,7 @@ int open_term(int doinit, int show_win_on_error, int no_msgs)
 #else /* SVR4_LOCKS */
     snprintf(lockfile, sizeof(lockfile),
                        "%s/LCK..%s",
-                       P_LOCK, mbasename(dial_tty, buf.bytes, sizeof(buf.bytes)));
+                       P_LOCK, mdevlockname(dial_tty, buf.bytes, sizeof(buf.bytes)));
 #endif /* SVR4_LOCKS */
 
   }
@@ -225,7 +253,7 @@ int open_term(int doinit, int show_win_on_error, int no_msgs)
   }
 #endif
 
-  if (doinit > 0 && lockfile_create() != 0)
+  if (doinit > 0 && lockfile_create(no_msgs) != 0)
 	  return -1;
 
 nolock:
@@ -347,7 +375,7 @@ static void kb_handler(int a, int b)
 {
   cursormode = b;
   keypadmode = a;
-  curs_status();
+  show_status();
 }
 
 /*
@@ -415,12 +443,11 @@ void init_emul(int type, int do_init)
   /* Install and reset the terminal emulator. */
   if (do_init) {
     vt_install(do_output, kb_handler, us);
-    vt_init(type, tfcolor, tbcolor, us->wrap, addlf);
+    vt_init(type, tfcolor, tbcolor, us->wrap, addlf, addcr);
   } else
     vt_pinit(us, -1, -1);
 
-  if (st)
-    show_status();
+  show_status();
 }
 
 /*
@@ -433,72 +460,179 @@ static void ret_csr(void)
   mc_wflush();
 }
 
-/*
- * Show baudrate, parity etc.
+
+/**
+ * Get status of device. It might happen that the device disappears (e.g.
+ * due to a USB-serial unplug).
+ *
+ * \return 1 if device seems ok, 0 if it seems not available
  */
-void mode_status(void)
+static int get_device_status(int fd)
 {
-  if (st) { /* if swich off status line - NOT print !!! (vlk@st.simbirsk.su) */
-    mc_wlocate(st, 20, 0);
-    if (portfd_is_socket) {
-      mc_wprintf(st, "unix-socket");
-    } else {
-      if (P_SHOWSPD[0] == 'l')
-        mc_wprintf(st, "%6ld %s%s%s", linespd, P_BITS, P_PARITY, P_STOPB);
-      else
-        mc_wprintf(st, "%6.6s %s%s%s", P_BAUDRATE, P_BITS, P_PARITY, P_STOPB);
-    }
-    ret_csr();
-  }
-}
-
-/*
- * Show offline or online time.
- * If real dcd is not supported, Online and Offline will be
- * shown in capitals.
- */
-void time_status(bool time_update_only)
-{
-  if (!st)
-    return;
-
-  if (time_update_only && disable_online_time)
-    return;
-
-  mc_wlocate(st, 63, 0);
-  if (disable_online_time)
-    {
-      char b[20];
-      mc_wprintf(st, " %s", mbasename(P_PORT, b, sizeof(b)));
-    }
-  else
-    {
-      if (online < 0)
-	mc_wprintf(st, " %12.12s ", P_HASDCD[0] == 'Y' ? _("Offline") : _("OFFLINE"));
-      else
-	mc_wprintf(st, " %s %02ld:%02ld", P_HASDCD[0] == 'Y' ? _("Online") : _("ONLINE"),
-	    online / 3600, (online / 60) % 60);
-
-    }
-  ret_csr();
-}
-
-/*
- * Show in which mode the cursor keys are (normal or application)
- */
-void curs_status(void)
-{
-  if (!st)
-    return;
-  mc_wlocate(st, 33, 0);
-  mc_wprintf(st, cursormode == NORMAL ? "NOR" : "APP");
-  ret_csr();
+  struct termios t;
+  if (fd < 0)
+    return 0;
+  if (portfd_is_socket && portfd_is_connected)
+    return 1;
+  return !tcgetattr(fd, &t);
 }
 
 
 static char status_message[80];
 static int  status_display_msg_until;
 static int  status_message_showing;
+
+static const char default_statusline_format[] = "%H for help | %b | %C | Minicom %V | %T | %t | %D";
+
+static const char *statusline_format = default_statusline_format;
+
+void set_status_line_format(const char *s)
+{
+  statusline_format = s;
+}
+
+/*
+ * Show the status line
+ */
+static void show_status_fmt(const char *fmt)
+{
+  if (!st)
+    return;
+
+  char buf[COLS];
+  int bufi = 0;
+  int l = strlen(fmt);
+  for (int i = 0; i < l && bufi < COLS; ++i)
+    {
+      if (fmt[i] == '%' && i + 1 < l)
+        {
+          char func = fmt[i + 1];
+          ++i;
+
+          switch (func)
+            {
+            case '%':
+              bufi += snprintf(buf + bufi, COLS - bufi, "%%");
+              break;
+            case 'H':
+              bufi += snprintf(buf + bufi, COLS - bufi, "%sZ", esc_key());
+              break;
+            case 'V':
+              bufi += snprintf(buf + bufi, COLS - bufi, "%s", VERSION);
+              break;
+            case 'b':
+              if (portfd_is_socket)
+                bufi += snprintf(buf + bufi, COLS - bufi, "unix-socket");
+              else
+                {
+                  if (P_SHOWSPD[0] == 'l')
+                    bufi += snprintf(buf + bufi, COLS - bufi, "%6ld", linespd);
+                  else
+                    bufi += snprintf(buf + bufi, COLS - bufi, "%s", P_BAUDRATE);
+                  bufi += snprintf(buf + bufi, COLS - bufi, " %s%s%s",  P_BITS, P_PARITY, P_STOPB);
+                }
+              break;
+            case 'T':
+              switch (terminal)
+                {
+                case VT100:
+                  bufi += snprintf(buf + bufi, COLS - bufi, "VT102");
+                  break;
+                case ANSI:
+                  bufi += snprintf(buf + bufi, COLS - bufi, "ANSI");
+                  break;
+                }
+
+              break;
+            case 'C':
+              bufi += snprintf(buf + bufi, COLS - bufi, cursormode == NORMAL ? "NOR" : "APP");
+              break;
+
+            case 't':
+              if (online < 0)
+                bufi += snprintf(buf + bufi, COLS - bufi, "%s",
+                                 P_HASDCD[0] == 'Y' ? _("Offline") : _("OFFLINE"));
+              else
+                bufi += snprintf(buf + bufi, COLS - bufi, "%s %ld:%ld",
+                                 P_HASDCD[0] == 'Y' ? _("Online") : _("ONLINE"),
+                                 online / 3600, (online / 60) % 60);
+              break;
+
+            case 'D':
+                {
+                  char b[COLS - bufi];
+                  bufi += snprintf(buf + bufi, COLS - bufi, "%s",
+                                   shortened_devpath(b, sizeof(b), P_PORT));
+                }
+              break;
+
+            case '$':
+              bufi += snprintf(buf + bufi, COLS - bufi, "%s", status_message);
+              break;
+
+            default:
+              bufi += snprintf(buf + bufi, COLS - bufi, "?%c", func);
+              break;
+            }
+        }
+      else
+        {
+          buf[bufi] = fmt[i];
+          bufi++;
+        }
+    }
+
+  if (bufi < COLS - 1)
+    memset(buf + bufi, ' ', COLS - bufi);
+  buf[COLS - 1] = 0;
+
+  st->direct = 0;
+  mc_wlocate(st, 0, 0);
+  mc_wprintf(st, "%s", buf);
+  mc_wredraw(st, 1);
+  ret_csr();
+}
+
+void show_status()
+{
+  show_status_fmt(statusline_format);
+}
+
+time_t old_online = -2;
+
+/*
+ * Update the online time.
+ */
+static void update_status_time(void)
+{
+  time_t now;
+  time(&now);
+
+  if (status_message_showing)
+    {
+      if (now > status_display_msg_until)
+        {
+          /* time over for status message, restore standard status line */
+          status_message_showing = 0;
+          show_status();
+        }
+      else
+        show_status_fmt("%$");
+    }
+
+  if (old_online == online || online <= (old_online + 59))
+    return;
+
+  if (P_LOGCONN[0] == 'Y' && old_online >= 0 && online < 0)
+    do_log(_("Gone offline (%ld:%02ld:%02ld)"),
+           old_online / 3600, (old_online / 60) % 60, old_online % 60);
+
+  old_online = online;
+
+  if (!status_message_showing)
+    show_status();
+  mc_wflush();
+}
 
 void status_set_display(const char *text, int duration_s)
 {
@@ -516,65 +650,6 @@ void status_set_display(const char *text, int duration_s)
   time(&t);
   status_display_msg_until = duration_s + t;
   status_message_showing = 1;
-}
-
-static void status_display_message(void)
-{
-  if (!st)
-    return;
-  mc_wlocate(st, 0, 0);
-  mc_wprintf(st, " %s", status_message);
-  ret_csr();
-}
-
-time_t old_online = -2;
-
-/*
- * Update the online time.
- */
-static void update_status_time(void)
-{
-  time_t now;
-  time(&now);
-
-  if (status_message_showing) {
-    if (now > status_display_msg_until) {
-      /* time over for status message, restore standard status line */
-      status_message_showing = 0;
-      if (st)
-	show_status();
-    } else
-      status_display_message();
-  }
-
-  if (old_online == online || online <= (old_online + 59))
-    return;
-
-  if (P_LOGCONN[0] == 'Y' && old_online >= 0 && online < 0)
-    do_log(_("Gone offline (%ld:%02ld:%02ld)"),
-           old_online / 3600, (old_online / 60) % 60, old_online % 60);
-
-  old_online = online;
-
-  if (!status_message_showing)
-    time_status(true);
-  mc_wflush();
-}
-
-/**
- * Get status of device. It might happen that the device disappears (e.g.
- * due to a USB-serial unplug).
- *
- * \return 1 if device seems ok, 0 if it seems not available
- */
-static int get_device_status(int fd)
-{
-  struct termios t;
-  if (fd < 0)
-    return 0;
-  if (portfd_is_socket && portfd_is_connected)
-    return 1;
-  return !tcgetattr(fd, &t);
 }
 
 /* Update the timer display. This can also be called from updown.c */
@@ -624,31 +699,6 @@ void timer_update(void)
   update_status_time();
 }
 
-/*
- * Show the status line 
- */
-void show_status(void)
-{
-  st->direct = 0;
-  mc_wlocate(st, 0, 0);
-  mc_wprintf(st,
-          _(" %7.7sZ for help |           |     | Minicom %-6.6s |       | "),
-          esc_key(), VERSION);
-  mode_status();
-  time_status(false);
-  curs_status();
-  mc_wlocate(st, 56, 0);
-  switch(terminal) {
-    case VT100:
-      mc_wputs(st, "VT102");
-      break;
-    case ANSI:
-      mc_wputs(st, "ANSI");
-      break;
-  }
-  mc_wredraw(st, 1);
-  ret_csr();
-}
 
 /*
  * Show the name of the script running now.
@@ -674,7 +724,7 @@ static void showtemp(void)
     return;
 
   st = mc_wopen(0, LINES - 1, COLS - 1, LINES - 1,
-             BNONE, st_attr, sfcolor, sbcolor, 1, 0, 1);
+                BNONE, st_attr, sfcolor, sbcolor, 1, 0, 1);
   show_status();
   tempst = 1;
 }
@@ -807,7 +857,15 @@ dirty_goto:
         }
         if (P_PARITY[0] == 'M' || P_PARITY[0] == 'S')
           *ptr &= 0x7f;
-        vt_out(*ptr++);
+        if (display_hex) {
+          unsigned char c = *ptr++;
+          unsigned char u = c >> 4;
+          c &= 0xf;
+          vt_out(u > 9 ? 'a' + (u - 10) : '0' + u);
+          vt_out(c > 9 ? 'a' + (c - 10) : '0' + c);
+          vt_out(' ');
+        } else
+          vt_out(*ptr++);
         if (zauto && zsig[zpos] == 0) {
           dirflush = 1;
           keyboard(KSTOP, 0);

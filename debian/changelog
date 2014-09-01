@@ -1,3 +1,38 @@
+minicom (2.7-1) unstable; urgency=low
+
+  * New upstream release, closes: #707564 (configurable status line).
+  * Fixed history buffer message box text width, closes: #470582.
+  * Added homepage control field.
+  * Updated watch file, but it still doesn't work.
+  * Updated standards version.
+
+ -- Martin A. Godisch <godisch@debian.org>  Wed, 01 Jan 2014 10:28:00 +0100
+
+minicom (2.6.2-1) unstable; urgency=low
+
+  * New upstream release,
+    closes: #698407 (handling of long device names).
+
+ -- Martin A. Godisch <godisch@debian.org>  Thu, 07 Feb 2013 22:02:34 +0100
+
+minicom (2.6.1-3) unstable; urgency=low
+
+  * Fixed compiler warnings.
+    Thanks to the gentle upstream maintainer.
+
+ -- Martin A. Godisch <godisch@debian.org>  Sun, 13 Jan 2013 14:30:37 +0100
+
+minicom (2.6.1-2) unstable; urgency=low
+
+  * Changed path delimiter handling, closes: #697624.
+    Thanks to the gentle upstream maintainer.
+  * Updated standards version:
+    + Added build-arch and build-indep target to debian/rules.
+    + Added $(shell dpkg-buildflags --export=configure) to configure call.
+  * Fixed debian/watch, closes: #692880.
+
+ -- Martin A. Godisch <godisch@debian.org>  Thu, 10 Jan 2013 20:28:50 +0100
+
 minicom (2.6.1-1) unstable; urgency=low
 
   * New upstream release,
