@@ -82,10 +82,12 @@ EXTERN int cursormode;	/* Mode of cursor (arrow) keys */
 EXTERN int docap;	/* Capture data to capture file */
 EXTERN FILE *capfp;	/* File to capture to */
 EXTERN int addlf;	/* Add LF after CR */
+EXTERN int addcr;	/* Insert CR before LF */
 EXTERN int wrapln;	/* Linewrap default */
+EXTERN int display_hex; /* Display in hex */
 EXTERN int tempst;	/* Status line is temporary */
 EXTERN int escape;	/* Escape code. */
-EXTERN int disable_online_time; /* disable online time display */
+EXTERN int option_T_used; /* option -T has been supplied, obsolete, print warning */
 
 EXTERN char lockfile[128]; /* UUCP lock file of terminal */
 EXTERN char homedir[256];  /* Home directory of user */
@@ -98,7 +100,7 @@ EXTERN int alt_override;/* -m option */
 EXTERN char parfile[256]; /* Global parameter file */
 EXTERN char pparfile[256]; /* Personal parameter file */
 
-EXTERN char scr_name[33];   /* Name of last script */
+EXTERN char scr_name[256];  /* Name of last script */
 EXTERN char scr_user[33];   /* Login name to use with script */
 EXTERN char scr_passwd[33]; /* Password to use with script */
 
@@ -224,10 +226,8 @@ void term_socket_close(void);
 int  open_term(int doinit, int show_win_on_error, int no_msgs);
 void init_emul(int type, int do_init);
 void timer_update(void);
-void mode_status(void);
-void time_status(bool);
-void curs_status(void);
 void show_status(void);
+void set_status_line_format(const char *s);
 void scriptname(const char *s);
 int  do_terminal(void);
 void status_set_display(const char *text, int duration_s);
@@ -299,7 +299,7 @@ extern int io_pending, pendingkeys;
 void domacros(void);
 
 
-int lockfile_create(void);
+int lockfile_create(int no_msgs);
 void lockfile_remove(void);
 
 

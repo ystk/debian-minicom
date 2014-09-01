@@ -54,10 +54,12 @@ static int mcd(char *dir)
     if (*dir == 0)
       return 0;
     init = 1;
-    getcwd(odir, 255);
+    if (getcwd(odir, sizeof(odir)) == NULL)
+      return -1;
   }
   if (*dir == 0) {
-    chdir(odir);
+    if (chdir(odir) == -1)
+      return -1;
     return 0;
   }
 
@@ -300,7 +302,8 @@ void updown(int what, int nr)
     snprintf(title, sizeof(title), _("%.30s %s - Press CTRL-C to quit"), P_PNAME(g),
              what == 'U' ? _("upload") : _("download"));
     mc_wtitle(win, TMID, title);
-    pipe(pipefd);
+    if (pipe(pipefd) == -1)
+      werror("pipe() call failed");
   } else
     mc_wleave();
 
@@ -410,7 +413,7 @@ void updown(int what, int nr)
   if (win == (WIN *)0)
     mc_wreturn();
 
-  lockfile_create();
+  lockfile_create(0);
 
   /* MARK updated 02/17/94 - Flush modem port before displaying READY msg */
   /* because a BBS often displays menu text right after a download, and we */
@@ -456,7 +459,7 @@ void lockfile_remove(void)
 #endif
 }
 
-int lockfile_create(void)
+int lockfile_create(int no_msgs)
 {
   int n;
 
@@ -471,24 +474,29 @@ int lockfile_create(void)
   n = umask(022);
   /* Create lockfile compatible with UUCP-1.2 */
   if ((fd = open(lockfile, O_WRONLY | O_CREAT | O_EXCL, 0666)) < 0) {
-    werror(_("Cannot create lockfile!"));
+    if (!no_msgs)
+      werror(_("Cannot create lockfile!"));
   } else {
     // FHS format:
     char buf[12];
     snprintf(buf, sizeof(buf),  "%10d\n", getpid());
     buf[sizeof(buf) - 1] = 0;
-    write(fd, buf, strlen(buf));
+    if (write(fd, buf, strlen(buf)) < (ssize_t)strlen(buf))
+      if (!no_msgs)
+        fprintf(stderr, _("Failed to write lockfile %s\n"), lockfile);
     close(fd);
   }
   umask(n);
   return 0;
 #else
   n = ttylock(dial_tty);
-  if (n < 0) {
-    fprintf(stderr, _("Cannot create lockfile for %s: %s\n"), dial_tty, strerror(-n));
-  } else if (n > 0) {
-    fprintf(stderr, _("Device %s is locked.\n"), dial_tty);
-  }
+  if (!no_msgs)
+    {
+      if (n < 0)
+        fprintf(stderr, _("Cannot create lockfile for %s: %s\n"), dial_tty, strerror(-n));
+      else if (n > 0)
+        fprintf(stderr, _("Device %s is locked.\n"), dial_tty);
+    }
   return n;
 #endif
 }
@@ -542,7 +550,7 @@ void kermit(void)
   mc_wreturn();
 
   /* Re-create lockfile */
-  lockfile_create();
+  lockfile_create(0);
 
   m_flush(portfd);
   port_init();
@@ -682,7 +690,7 @@ void runscript(int ask, const char *s, const char *l, const char *p)
           break;
         case 'C':
           mc_wlocate(w, mbslen (name_of_script) + 1, 3);
-          mc_wgets(w, scr_name, 32, 32);
+          mc_wgets(w, scr_name, 32, sizeof(scr_name) - 1);
           break;
         default:
           break;
@@ -703,7 +711,8 @@ void runscript(int ask, const char *s, const char *l, const char *p)
   }
   scriptname(scr_name);
 
-  pipe(pipefd);
+  if (pipe(pipefd) < 0)
+    return;
 
   if (mcd(P_SCRIPTDIR) < 0)
     return;

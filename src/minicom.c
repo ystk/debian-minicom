@@ -817,6 +817,7 @@ static void helpthem(void)
     "  -l, --ansi             : literal; assume screen uses non IBM-PC character set\n"
     "  -L, --iso              : don't assume screen uses ISO8859\n"
     "  -w, --wrap             : Linewrap on\n"
+    "  -H, --displayhex       : display output in hex\n"
     "  -z, --statline         : try to use terminal's status line\n"
     "  -7, --7bit             : force 7bit mode\n"
     "  -8, --8bit             : force 8bit mode\n"
@@ -827,8 +828,10 @@ static void helpthem(void)
     "  -d, --dial=ENTRY       : dial ENTRY from the dialing directory\n"
     "  -p, --ptty=TTYP        : connect to pseudo terminal\n"
     "  -C, --capturefile=FILE : start capturing to FILE\n"
-    "  -T, --disabletime      : disable display of online time\n"
+    "  -F, --statlinefmt      : format of status line\n"
+    "  -R, --remotecharset    : character set of communication partner\n"
     "  -v, --version          : output version information and exit\n"
+    "  -h, --help             : show help\n"
     "  configuration          : configuration file to use\n\n"
     "These options can also be specified in the MINICOM environment variable.\n"),
     PACKAGE);
@@ -845,7 +848,7 @@ static void helpthem(void)
 
 static void set_addlf(int val)
 {
-  vt_set(val, -1, -1, -1, -1, -1, -1, -1);
+  vt_set(val, -1, -1, -1, -1, -1, -1, -1, -1);
 }
 
 /* Toggle linefeed addition.  Can be called through the menu, or by a macro. */
@@ -855,9 +858,21 @@ void toggle_addlf(void)
   set_addlf(addlf);
 }
 
+static void set_addcr(int val)
+{
+  vt_set(-1, -1, -1, -1, -1, -1, -1, -1, val);
+}
+
+/* Toggle carriagereturn addition.  Can be called through the menu, or by a macro. */
+void toggle_addcr(void)
+{
+  addcr = !addcr;
+  set_addcr(addcr);
+}
+
 static void set_local_echo(int val)
 {
-  vt_set(-1, -1, -1, -1, val, -1 ,-1, -1);
+  vt_set(-1, -1, -1, -1, val, -1 ,-1, -1, -1);
 }
 
 /* Toggle local echo.  Can be called through the menu, or by a macro. */
@@ -869,7 +884,7 @@ void toggle_local_echo(void)
 
 static void set_line_timestamp(int val)
 {
-  vt_set(-1, -1, -1, -1 ,-1, -1, -1, val);
+  vt_set(-1, -1, -1, -1 ,-1, -1, -1, val, -1);
 }
 
 /* Toggle host timestamping on/off */
@@ -1032,10 +1047,12 @@ int main(int argc, char **argv)
     { "8bit",          no_argument,       NULL, '8' },
     { "version",       no_argument,       NULL, 'v' },
     { "wrap",          no_argument,       NULL, 'w' },
-    { "disabletime",   no_argument,       NULL, 'T' },
+    { "displayhex",    no_argument,       NULL, 'H' },
+    { "disabletime",   no_argument,       NULL, 'T' }, // obsolete
     { "baudrate",      required_argument, NULL, 'b' },
     { "device",        required_argument, NULL, 'D' },
     { "remotecharset", required_argument, NULL, 'R' },
+    { "statlinefmt",   required_argument, NULL, 'F' },
     { NULL, 0, NULL, 0 }
   };
 
@@ -1053,9 +1070,11 @@ int main(int argc, char **argv)
   stdattr = XA_NORMAL;
   us = NULL;
   addlf = 0;
+  addcr = 0;
   line_timestamp = 0;
   wrapln = 0;
-  disable_online_time = 0;
+  display_hex = 0;
+  option_T_used = 0;
   local_echo = 0;
   strcpy(capname, "minicom.cap");
   lockfile[0] = 0;
@@ -1135,7 +1154,7 @@ int main(int argc, char **argv)
 
   do {
     /* Process options with getopt */
-    while ((c = getopt_long(argk, args, "v78zhlLsomMb:wTc:a:t:d:p:C:S:D:R:",
+    while ((c = getopt_long(argk, args, "v78zhlLsomMHb:wTc:a:t:d:p:C:S:D:R:F:",
                             long_options, NULL)) != EOF)
       switch(c) {
 	case 'v':
@@ -1235,10 +1254,11 @@ int main(int argc, char **argv)
             exit(1);
           }
           docap = 1;
-          vt_set(addlf, -1, docap, -1, -1, -1, -1, -1);
+          vt_set(addlf, -1, docap, -1, -1, -1, -1, -1, addcr);
           break;
         case 'S': /* start Script */
-          strncpy(scr_name, optarg, 33);
+          strncpy(scr_name, optarg, sizeof(scr_name) - 1);
+          scr_name[sizeof(scr_name) - 1] = 0;
           break;
         case '7': /* 7bit fallback mode */
 	  screen_ibmpc = screen_iso = 0;
@@ -1249,8 +1269,14 @@ int main(int argc, char **argv)
         case 'w': /* Linewrap on */
           wrapln = 1;
           break;
-        case 'T': /* disable online time */
-          disable_online_time = 1;
+        case 'H': /* Display in hex */
+          display_hex = 1;
+          break;
+        case 'T':
+          option_T_used = 1;
+          break;
+        case 'F': /* format of status line */
+          set_status_line_format(optarg);
           break;
 	case 'b':
 	  cmdline_baudrate = optarg;
@@ -1277,7 +1303,7 @@ int main(int argc, char **argv)
 
   if (screen_iso && screen_ibmpc)
     /* init VT */
-    vt_set(-1, -1, -1, -1, -1, -1, 1, -1);
+    vt_set(-1, -1, -1, -1, -1, -1, 1, -1, -1);
 
   /* Avoid fraude ! */	
   for (s = use_port; *s; s++)
@@ -1308,6 +1334,15 @@ int main(int argc, char **argv)
   /* Set default terminal behaviour */
   addlf      = strcasecmp(P_ADDLINEFEED, "yes") == 0;
   local_echo = strcasecmp(P_LOCALECHO,   "yes") == 0;
+  addcr      = strcasecmp(P_ADDCARRIAGERETURN, "yes") == 0;
+
+  /* -w overrides config file */
+  if (!wrapln)
+    wrapln = strcasecmp(P_LINEWRAP, "yes") == 0;
+
+  /* -H overrides config file */
+  if (!display_hex)
+    display_hex = strcasecmp(P_DISPLAYHEX, "yes") == 0;
 
   /* After reading in the config via read_parms we can possibly overwrite
    * the baudrate with a value given at the cmdline */
@@ -1319,7 +1354,7 @@ int main(int argc, char **argv)
     }
   }
 
-  /* New we can also overwrite the device name, if one was given */
+  /* Now we can also overwrite the device name, if one was given */
   if (cmdline_device) {
     strncpy(P_PORT, cmdline_device, sizeof(P_PORT));
     P_PORT[sizeof(P_PORT) - 1] = 0;
@@ -1422,12 +1457,30 @@ int main(int argc, char **argv)
   if (doinit)
     modeminit();
 
+  if (option_T_used)
+    mc_wprintf(us, "WARNING: Option -T ignored, use -F now\n\n");
+
   mc_wprintf(us, "\n%s %s\r\n", _("Welcome to minicom"), VERSION);
   mc_wprintf(us, "\n%s: %s\r\n", _("OPTIONS"), option_string);
 #if defined (__DATE__) && defined (__TIME__)
   mc_wprintf(us, "%s %s, %s.\r\n",_("Compiled on"), __DATE__,__TIME__);
 #endif
-  mc_wprintf(us, "%s %s\r\n", _("Port"), P_PORT);
+  {
+    struct stat st;
+    char port_date[20] = "";
+    if (stat(P_PORT, &st) == 0)
+      {
+	time_t t = time(NULL);
+        struct tm tm;
+        if (   st.st_mtime + 20 * 60 * 60 > t
+            && localtime_r(&st.st_mtime, &tm))
+            {
+              strftime(port_date, sizeof(port_date), ", %T", &tm);
+              port_date[sizeof(port_date) - 1] = 0;
+            }
+      }
+    mc_wprintf(us, "%s %s%s\r\n", _("Port"), P_PORT, port_date);
+  }
   if (using_iconv())
     mc_wprintf(us, "%s\r\n", _("Using character set conversion"));
   mc_wprintf(us, _("\nPress %sZ for help on special keys%c\n\n"),esc_key(),'\r');
@@ -1452,6 +1505,11 @@ dirty_goto:
       case 'a': /* Add line feed */
         toggle_addlf();
         s = addlf ?  _("Add linefeed ON") : _("Add linefeed OFF");
+        status_set_display(s, 0);
+        break;
+      case 'u': /* Add carriage return */
+        toggle_addcr();
+        s = addcr ?  _("Add carriage return ON") : _("Add carriage return OFF");
         status_set_display(s, 0);
         break;
       case 'e': /* Local echo on/off. */
@@ -1542,13 +1600,12 @@ dirty_goto:
           if (c == 1)
             docap = 0;
         }
-        vt_set(addlf, -1, docap, -1, -1, -1, -1, -1);
+        vt_set(addlf, -1, docap, -1, -1, -1, -1, -1, addcr);
         break;
       case 'p': /* Set parameters */
         get_bbp(P_BAUDRATE, P_BITS, P_PARITY, P_STOPB, 0);
         port_init();
-        if (st)
-          mode_status();
+        show_status();
         quit = 0;
         break;
       case 'k': /* Run kermit */
@@ -1567,7 +1624,7 @@ dirty_goto:
         break;
       case 'w': /* Line wrap on-off */
         c = !us->wrap;
-        vt_set(addlf, c, docap, -1, -1, -1, -1, -1);
+        vt_set(addlf, c, docap, -1, -1, -1, -1, -1, addcr);
         s = c ? _("Linewrap ON") : _("Linewrap OFF");
 	status_set_display(s, 0);
         break;
@@ -1609,7 +1666,7 @@ dirty_goto:
       case 'i': /* Re-init, re-open portfd. */
         cursormode = (cursormode == NORMAL) ? APPL : NORMAL;
         keyboard(cursormode == NORMAL ? KCURST : KCURAPP, 0);
-        curs_status();
+        show_status();
         break;
       case 'y': /* Paste file */
 	paste_file();

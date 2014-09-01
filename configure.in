@@ -3,7 +3,7 @@ dnl configure.in autoconf/automake input script
 dnl for minicom
 dnl
 
-AC_INIT([minicom], [2.6.1], [minicom-devel@lists.alioth.debian.org])
+AC_INIT([minicom], [2.7], [minicom-devel@lists.alioth.debian.org])
 AC_CONFIG_SRCDIR([src/minicom.c])
 AM_CONFIG_HEADER([config.h])
 AC_PREREQ(2.59)
@@ -12,6 +12,7 @@ AM_INIT_AUTOMAKE([1.7])
 
 dnl Checks for programs.
 AC_PROG_CC
+AM_PROG_AR
 
 AC_AIX
 AC_MINIX
@@ -190,7 +191,6 @@ AC_CHECK_HEADERS(stdarg.h varargs.h termio.h termios.h \
 
 dnl Checks for typedefs, structures, and compiler characteristics.
 AC_C_CONST
-AM_C_PROTOTYPES
 AC_TYPE_UID_T
 AC_TYPE_MODE_T
 AC_TYPE_PID_T
