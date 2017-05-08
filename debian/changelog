@@ -1,3 +1,11 @@
+minicom (2.7-1+deb8u1) jessie; urgency=high
+
+  * Non-maintainer upload.
+  * Add ARRAY_SIZE macro
+  * CVE-2017-7467: Out of bounds write in vt100.c (Closes: #860940)
+
+ -- Salvatore Bonaccorso <carnil@debian.org>  Mon, 24 Apr 2017 09:03:48 +0200
+
 minicom (2.7-1) unstable; urgency=low
 
   * New upstream release, closes: #707564 (configurable status line).

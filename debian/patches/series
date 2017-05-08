@@ -2,3 +2,5 @@
 01manual.diff
 03norzsz.diff
 470582_history_buffer_msg.diff
+Add-ARRAY_SIZE-macro.diff
+CVE-2017-7467.diff
